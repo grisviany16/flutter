@@ -196,10 +196,13 @@ void main() {
               buildSubcommand,
               '--$buildMode',
               if (buildSubcommand == 'ios') '--no-codesign',
+              '-v',
             ],
             workingDirectory: exampleDirectory.path,
           );
           if (result.exitCode != 0) {
+            print(result.stdout);
+            print(result.stderr);
             throw Exception('flutter build failed: ${result.exitCode}\n${result.stderr}\n${result.stdout}');
           }
 
