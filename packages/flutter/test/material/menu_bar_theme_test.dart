@@ -46,9 +46,16 @@ void main() {
     );
   }
 
+  test('MenuBarThemeData lerp special cases', () {
+    expect(MenuBarThemeData.lerp(null, null, 0), null);
+    const MenuBarThemeData data = MenuBarThemeData();
+    expect(identical(MenuBarThemeData.lerp(data, data, 0.5), data), true);
+  });
+
   testWidgets('theme is honored', (WidgetTester tester) async {
     await tester.pumpWidget(
       MaterialApp(
+        theme: ThemeData(useMaterial3: false),
         home: Material(
           child: Builder(builder: (BuildContext context) {
             return MenuTheme(
@@ -101,6 +108,7 @@ void main() {
   testWidgets('Constructor parameters override theme parameters', (WidgetTester tester) async {
     await tester.pumpWidget(
       MaterialApp(
+        theme: ThemeData(useMaterial3: false),
         home: Material(
           child: Builder(
             builder: (BuildContext context) {

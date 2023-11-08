@@ -30,15 +30,13 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return const MaterialApp(
       title: _title,
-      home: MyHomePage(title: _title),
+      home: MyHomePage(),
     );
   }
 }
 
 class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title});
-
-  final String title;
+  const MyHomePage({super.key});
 
   @override
   State<MyHomePage> createState() => _MyHomePageState();
@@ -92,12 +90,6 @@ class OptionModel extends ChangeNotifier {
 
   bool get longText => _longText;
   bool _longText = false;
-  set longText(bool longText) {
-    if (longText != _longText) {
-      _longText = longText;
-      notifyListeners();
-    }
-  }
 
   void reset() {
     final OptionModel defaultModel = OptionModel();
@@ -365,9 +357,7 @@ class _OptionsState extends State<Options> {
 }
 
 class _ControlTile extends StatelessWidget {
-  const _ControlTile({required this.label, required this.child})
-      : assert(label != null),
-        assert(child != null);
+  const _ControlTile({required this.label, required this.child});
 
   final String label;
   final Widget child;

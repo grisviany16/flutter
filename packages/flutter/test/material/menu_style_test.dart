@@ -35,6 +35,12 @@ void main() {
   }
 
   group('MenuStyle', () {
+    test('MenuStyle lerp special cases', () {
+      expect(MenuStyle.lerp(null, null, 0), null);
+      const MenuStyle data = MenuStyle();
+      expect(identical(MenuStyle.lerp(data, data, 0.5), data), true);
+    });
+
     testWidgets('fixedSize affects geometry', (WidgetTester tester) async {
       await tester.pumpWidget(
         MaterialApp(
@@ -233,6 +239,7 @@ void main() {
     testWidgets('visual density', (WidgetTester tester) async {
       await tester.pumpWidget(
         MaterialApp(
+          theme: ThemeData(useMaterial3: false),
           home: Material(
             child: Column(
               children: <Widget>[

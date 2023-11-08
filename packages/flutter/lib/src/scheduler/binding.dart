@@ -189,7 +189,7 @@ enum SchedulerPhase {
 /// See also:
 ///
 /// * [PerformanceModeRequestHandle] for more information on the lifecycle of the handle.
-typedef _PerformanceModeCleaupCallback = VoidCallback;
+typedef _PerformanceModeCleanupCallback = VoidCallback;
 
 /// An opaque handle that keeps a request for [DartPerformanceMode] active until
 /// disposed.
@@ -197,9 +197,9 @@ typedef _PerformanceModeCleaupCallback = VoidCallback;
 /// To create a [PerformanceModeRequestHandle], use [SchedulerBinding.requestPerformanceMode].
 /// The component that makes the request is responsible for disposing the handle.
 class PerformanceModeRequestHandle {
-  PerformanceModeRequestHandle._(_PerformanceModeCleaupCallback this._cleanup);
+  PerformanceModeRequestHandle._(_PerformanceModeCleanupCallback this._cleanup);
 
-  _PerformanceModeCleaupCallback? _cleanup;
+  _PerformanceModeCleanupCallback? _cleanup;
 
   /// Call this method to signal to [SchedulerBinding] that a request for a [DartPerformanceMode]
   /// is no longer needed.
@@ -371,10 +371,18 @@ mixin SchedulerBinding on BindingBase {
   /// This is set by [handleAppLifecycleStateChanged] when the
   /// [SystemChannels.lifecycle] notification is dispatched.
   ///
-  /// The preferred way to watch for changes to this value is using
-  /// [WidgetsBindingObserver.didChangeAppLifecycleState].
+  /// The preferred ways to watch for changes to this value are using
+  /// [WidgetsBindingObserver.didChangeAppLifecycleState], or through an
+  /// [AppLifecycleListener] object.
   AppLifecycleState? get lifecycleState => _lifecycleState;
   AppLifecycleState? _lifecycleState;
+
+  /// Allows the test framework to reset the lifecycle state back to its
+  /// initial value.
+  @visibleForTesting
+  void resetLifecycleState() {
+    _lifecycleState = null;
+  }
 
   /// Called when the application lifecycle state changes.
   ///
@@ -385,17 +393,18 @@ mixin SchedulerBinding on BindingBase {
   @protected
   @mustCallSuper
   void handleAppLifecycleStateChanged(AppLifecycleState state) {
-    assert(state != null);
+    if (lifecycleState == state) {
+      return;
+    }
     _lifecycleState = state;
     switch (state) {
       case AppLifecycleState.resumed:
       case AppLifecycleState.inactive:
         _setFramesEnabledState(true);
-        break;
+      case AppLifecycleState.hidden:
       case AppLifecycleState.paused:
       case AppLifecycleState.detached:
         _setFramesEnabledState(false);
-        break;
     }
   }
 
@@ -725,14 +734,15 @@ mixin SchedulerBinding on BindingBase {
 
   /// Schedule a callback for the end of this frame.
   ///
-  /// Does *not* request a new frame.
+  /// The provided callback is run immediately after a frame, just after the
+  /// persistent frame callbacks (which is when the main rendering pipeline has
+  /// been flushed).
   ///
-  /// This callback is run during a frame, just after the persistent
-  /// frame callbacks (which is when the main rendering pipeline has
-  /// been flushed). If a frame is in progress and post-frame
-  /// callbacks haven't been executed yet, then the registered
-  /// callback is still executed during the frame. Otherwise, the
-  /// registered callback is executed during the next frame.
+  /// This method does *not* request a new frame. If a frame is already in
+  /// progress and the execution of post-frame callbacks has not yet begun, then
+  /// the registered callback is executed at the end of the current frame.
+  /// Otherwise, the registered callback is executed after the next frame
+  /// (whenever that may be, if ever).
   ///
   /// The callbacks are executed in the order in which they have been
   /// added.
@@ -1026,7 +1036,6 @@ mixin SchedulerBinding on BindingBase {
   /// presentation time, and can be used to ensure that animations running in
   /// different processes are synchronized.
   Duration get currentSystemFrameTimeStamp {
-    assert(_lastRawTimeStamp != null);
     return _lastRawTimeStamp;
   }
 
@@ -1275,11 +1284,10 @@ mixin SchedulerBinding on BindingBase {
   // Calls the given [callback] with [timestamp] as argument.
   //
   // Wraps the callback in a try/catch and forwards any error to
-  // [debugSchedulerExceptionHandler], if set. If not set, then simply prints
+  // [debugSchedulerExceptionHandler], if set. If not set, prints
   // the error.
   @pragma('vm:notify-debugger-on-exception')
   void _invokeFrameCallback(FrameCallback callback, Duration timeStamp, [ StackTrace? callbackStack ]) {
-    assert(callback != null);
     assert(_FrameCallbackEntry.debugCurrentCallbackStack == null);
     assert(() {
       _FrameCallbackEntry.debugCurrentCallbackStack = callbackStack;

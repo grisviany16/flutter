@@ -2,7 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import 'dart:developer';
 import 'dart:ui' as ui show SemanticsUpdate;
 
 import 'package:flutter/foundation.dart';
@@ -30,7 +29,6 @@ mixin RendererBinding on BindingBase, ServicesBinding, SchedulerBinding, Gesture
     super.initInstances();
     _instance = this;
     _pipelineOwner = PipelineOwner(
-      onNeedVisualUpdate: ensureVisualUpdate,
       onSemanticsOwnerCreated: _handleSemanticsOwnerCreated,
       onSemanticsUpdate: _handleSemanticsUpdate,
       onSemanticsOwnerDisposed: _handleSemanticsOwnerDisposed,
@@ -38,17 +36,14 @@ mixin RendererBinding on BindingBase, ServicesBinding, SchedulerBinding, Gesture
     platformDispatcher
       ..onMetricsChanged = handleMetricsChanged
       ..onTextScaleFactorChanged = handleTextScaleFactorChanged
-      ..onPlatformBrightnessChanged = handlePlatformBrightnessChanged
-      ..onSemanticsEnabledChanged = _handleSemanticsEnabledChanged
-      ..onSemanticsAction = _handleSemanticsAction;
+      ..onPlatformBrightnessChanged = handlePlatformBrightnessChanged;
     initRenderView();
-    _handleSemanticsEnabledChanged();
-    assert(renderView != null);
     addPersistentFrameCallback(_handlePersistentFrameCallback);
     initMouseTracker();
     if (kIsWeb) {
       addPostFrameCallback(_handleWebFirstFrame);
     }
+    _pipelineOwner.attach(_manifold);
   }
 
   /// The current [RendererBinding], if one has been created.
@@ -203,6 +198,8 @@ mixin RendererBinding on BindingBase, ServicesBinding, SchedulerBinding, Gesture
     }
   }
 
+  late final PipelineManifold _manifold = _BindingPipelineManifold(this);
+
   /// Creates a [RenderView] object to be the root of the
   /// [RenderObject] rendering tree, and initializes it so that it
   /// will be rendered when the next frame is requested.
@@ -214,7 +211,7 @@ mixin RendererBinding on BindingBase, ServicesBinding, SchedulerBinding, Gesture
       _debugIsRenderViewInitialized = true;
       return true;
     }());
-    renderView = RenderView(configuration: createViewConfiguration(), window: window);
+    renderView = RenderView(configuration: createViewConfiguration(), view: platformDispatcher.implicitView!);
     renderView.prepareInitialFrame();
   }
   bool _debugIsRenderViewInitialized = false;
@@ -234,7 +231,6 @@ mixin RendererBinding on BindingBase, ServicesBinding, SchedulerBinding, Gesture
   /// Sets the given [RenderView] object (which must not be null), and its tree, to
   /// be the new render tree to display. The previous tree, if any, is detached.
   set renderView(RenderView value) {
-    assert(value != null);
     _pipelineOwner.rootNode = value;
   }
 
@@ -244,7 +240,6 @@ mixin RendererBinding on BindingBase, ServicesBinding, SchedulerBinding, Gesture
   @protected
   @visibleForTesting
   void handleMetricsChanged() {
-    assert(renderView != null);
     renderView.configuration = createViewConfiguration();
     if (renderView.child != null) {
       scheduleForcedFrame();
@@ -304,14 +299,13 @@ mixin RendererBinding on BindingBase, ServicesBinding, SchedulerBinding, Gesture
   /// this to force the display into 800x600 when a test is run on the device
   /// using `flutter run`.
   ViewConfiguration createViewConfiguration() {
-    final double devicePixelRatio = window.devicePixelRatio;
+    final FlutterView view = platformDispatcher.implicitView!;
+    final double devicePixelRatio = view.devicePixelRatio;
     return ViewConfiguration(
-      size: window.physicalSize / devicePixelRatio,
+      size: view.physicalSize / devicePixelRatio,
       devicePixelRatio: devicePixelRatio,
     );
   }
-
-  SemanticsHandle? _semanticsHandle;
 
   /// Creates a [MouseTracker] which manages state about currently connected
   /// mice, for hover notification.
@@ -320,49 +314,28 @@ mixin RendererBinding on BindingBase, ServicesBinding, SchedulerBinding, Gesture
   @visibleForTesting
   void initMouseTracker([MouseTracker? tracker]) {
     _mouseTracker?.dispose();
-    _mouseTracker = tracker ?? MouseTracker();
+    _mouseTracker = tracker ?? MouseTracker((Offset position, int viewId) {
+      final HitTestResult result = HitTestResult();
+      hitTestInView(result, position, viewId);
+      return result;
+    });
   }
 
   @override // from GestureBinding
   void dispatchEvent(PointerEvent event, HitTestResult? hitTestResult) {
     _mouseTracker!.updateWithEvent(
       event,
-      // Enter and exit events should be triggered with or without buttons
-      // pressed. When the button is pressed, normal hit test uses a cached
+      // When the button is pressed, normal hit test uses a cached
       // result, but MouseTracker requires that the hit test is re-executed to
       // update the hovering events.
-      () => (hitTestResult == null || event is PointerMoveEvent) ? renderView.hitTestMouseTrackers(event.position) : hitTestResult,
+      event is PointerMoveEvent ? null : hitTestResult,
     );
     super.dispatchEvent(event, hitTestResult);
   }
 
-  void _handleSemanticsEnabledChanged() {
-    setSemanticsEnabled(platformDispatcher.semanticsEnabled);
-  }
-
-  /// Whether the render tree associated with this binding should produce a tree
-  /// of [SemanticsNode] objects.
-  void setSemanticsEnabled(bool enabled) {
-    if (enabled) {
-      _semanticsHandle ??= _pipelineOwner.ensureSemantics();
-    } else {
-      _semanticsHandle?.dispose();
-      _semanticsHandle = null;
-    }
-  }
-
-  void _handleWebFirstFrame(Duration _) {
-    assert(kIsWeb);
-    const MethodChannel methodChannel = MethodChannel('flutter/service_worker');
-    methodChannel.invokeMethod<void>('first-frame');
-  }
-
-  void _handleSemanticsAction(int id, SemanticsAction action, ByteData? args) {
-    _pipelineOwner.semanticsOwner?.performAction(
-      id,
-      action,
-      args != null ? const StandardMessageCodec().decodeMessage(args) : null,
-    );
+  @override
+  void performSemanticsAction(SemanticsActionEvent action) {
+    _pipelineOwner.semanticsOwner?.performAction(action.nodeId, action.type, action.arguments);
   }
 
   void _handleSemanticsOwnerCreated() {
@@ -375,6 +348,12 @@ mixin RendererBinding on BindingBase, ServicesBinding, SchedulerBinding, Gesture
 
   void _handleSemanticsOwnerDisposed() {
     renderView.clearSemantics();
+  }
+
+  void _handleWebFirstFrame(Duration _) {
+    assert(kIsWeb);
+    const MethodChannel methodChannel = MethodChannel('flutter/service_worker');
+    methodChannel.invokeMethod<void>('first-frame');
   }
 
   void _handlePersistentFrameCallback(Duration timeStamp) {
@@ -395,7 +374,7 @@ mixin RendererBinding on BindingBase, ServicesBinding, SchedulerBinding, Gesture
         _debugMouseTrackerUpdateScheduled = false;
         return true;
       }());
-      _mouseTracker!.updateAllDevices(renderView.hitTestMouseTrackers);
+      _mouseTracker!.updateAllDevices();
     });
   }
 
@@ -512,7 +491,6 @@ mixin RendererBinding on BindingBase, ServicesBinding, SchedulerBinding, Gesture
   // When editing the above, also update widgets/binding.dart's copy.
   @protected
   void drawFrame() {
-    assert(renderView != null);
     pipelineOwner.flushLayout();
     pipelineOwner.flushCompositingBits();
     pipelineOwner.flushPaint();
@@ -528,13 +506,13 @@ mixin RendererBinding on BindingBase, ServicesBinding, SchedulerBinding, Gesture
     await super.performReassemble();
     if (BindingBase.debugReassembleConfig?.widgetName == null) {
       if (!kReleaseMode) {
-        Timeline.startSync('Preparing Hot Reload (layout)');
+        FlutterTimeline.startSync('Preparing Hot Reload (layout)');
       }
       try {
         renderView.reassemble();
       } finally {
         if (!kReleaseMode) {
-          Timeline.finishSync();
+          FlutterTimeline.finishSync();
         }
       }
     }
@@ -542,13 +520,19 @@ mixin RendererBinding on BindingBase, ServicesBinding, SchedulerBinding, Gesture
     await endOfFrame;
   }
 
+  late final int _implicitViewId = platformDispatcher.implicitView!.viewId;
+
   @override
-  void hitTest(HitTestResult result, Offset position) {
-    assert(renderView != null);
-    assert(result != null);
-    assert(position != null);
+  void hitTestInView(HitTestResult result, Offset position, int viewId) {
+    // Currently Flutter only supports one view, the implicit view `renderView`.
+    // TODO(dkwingsmt): After Flutter supports multi-view, look up the correct
+    // render view for the ID.
+    // https://github.com/flutter/flutter/issues/121573
+    assert(viewId == _implicitViewId,
+        'Unexpected view ID $viewId (expecting implicit view ID $_implicitViewId)');
+    assert(viewId == renderView.flutterView.viewId);
     renderView.hitTest(result, position: position);
-    super.hitTest(result, position);
+    super.hitTestInView(result, position, viewId);
   }
 
   Future<void> _forceRepaint() {
@@ -620,7 +604,6 @@ class RenderingFlutterBinding extends BindingBase with GestureBinding, Scheduler
   /// This binding does not automatically schedule any frames. Callers are
   /// responsible for deciding when to first call [scheduleFrame].
   RenderingFlutterBinding({ RenderBox? root }) {
-    assert(renderView != null);
     renderView.child = root;
   }
 
@@ -637,5 +620,28 @@ class RenderingFlutterBinding extends BindingBase with GestureBinding, Scheduler
       RenderingFlutterBinding();
     }
     return RendererBinding.instance;
+  }
+}
+
+/// A [PipelineManifold] implementation that is backed by the [RendererBinding].
+class _BindingPipelineManifold extends ChangeNotifier implements PipelineManifold {
+  _BindingPipelineManifold(this._binding) {
+    _binding.addSemanticsEnabledListener(notifyListeners);
+  }
+
+  final RendererBinding _binding;
+
+  @override
+  void requestVisualUpdate() {
+    _binding.ensureVisualUpdate();
+  }
+
+  @override
+  bool get semanticsEnabled => _binding.semanticsEnabled;
+
+  @override
+  void dispose() {
+    _binding.removeSemanticsEnabledListener(notifyListeners);
+    super.dispose();
   }
 }

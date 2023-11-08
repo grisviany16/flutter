@@ -5,8 +5,9 @@
 // This file is run as part of a reduced test set in CI on Mac and Windows
 // machines.
 @Tags(<String>['reduced-test-set'])
-
 @TestOn('!chrome')
+library;
+
 import 'dart:ui' as ui show BoxHeightStyle, BoxWidthStyle;
 import 'dart:ui';
 
@@ -58,20 +59,23 @@ Widget overlay({ Widget? child }) {
 }
 
 Widget overlayWithEntry(OverlayEntry entry) {
-  return Localizations(
-    locale: const Locale('en', 'US'),
-    delegates: <LocalizationsDelegate<dynamic>>[
-      WidgetsLocalizationsDelegate(),
-      MaterialLocalizationsDelegate(),
-    ],
-    child: Directionality(
-      textDirection: TextDirection.ltr,
-      child: MediaQuery(
-        data: const MediaQueryData(size: Size(800.0, 600.0)),
-        child: Overlay(
-          initialEntries: <OverlayEntry>[
-            entry,
-          ],
+  return Theme(
+    data: ThemeData(useMaterial3: false),
+    child: Localizations(
+      locale: const Locale('en', 'US'),
+      delegates: <LocalizationsDelegate<dynamic>>[
+        WidgetsLocalizationsDelegate(),
+        MaterialLocalizationsDelegate(),
+      ],
+      child: Directionality(
+        textDirection: TextDirection.ltr,
+        child: MediaQuery(
+          data: const MediaQueryData(size: Size(800.0, 600.0)),
+          child: Overlay(
+            initialEntries: <OverlayEntry>[
+              entry,
+            ],
+          ),
         ),
       ),
     ),
@@ -79,25 +83,29 @@ Widget overlayWithEntry(OverlayEntry entry) {
 }
 
 Widget boilerplate({ Widget? child }) {
-  return Localizations(
-    locale: const Locale('en', 'US'),
-    delegates: <LocalizationsDelegate<dynamic>>[
-      WidgetsLocalizationsDelegate(),
-      MaterialLocalizationsDelegate(),
-    ],
-    child: Directionality(
-      textDirection: TextDirection.ltr,
-      child: MediaQuery(
-        data: const MediaQueryData(size: Size(800.0, 600.0)),
-        child: Center(
-          child: Material(
-            child: child,
+  return Theme(
+    data: ThemeData(useMaterial3: false),
+    child:Localizations(
+      locale: const Locale('en', 'US'),
+      delegates: <LocalizationsDelegate<dynamic>>[
+        WidgetsLocalizationsDelegate(),
+        MaterialLocalizationsDelegate(),
+      ],
+      child: Directionality(
+        textDirection: TextDirection.ltr,
+        child: MediaQuery(
+          data: const MediaQueryData(size: Size(800.0, 600.0)),
+          child: Center(
+            child: Material(
+              child: child,
+            ),
           ),
         ),
       ),
     ),
   );
 }
+
 
 Future<void> skipPastScrollingAnimation(WidgetTester tester) async {
   await tester.pump();
@@ -145,7 +153,7 @@ void main() {
 
   setUp(() async {
     debugResetSemanticsIdCounter();
-    TestDefaultBinaryMessengerBinding.instance!.defaultBinaryMessenger.setMockMethodCallHandler(
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
       SystemChannels.platform,
       mockClipboard.handleMethodCall,
     );
@@ -155,7 +163,7 @@ void main() {
   });
 
   tearDown(() {
-    TestDefaultBinaryMessengerBinding.instance!.defaultBinaryMessenger.setMockMethodCallHandler(
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
       SystemChannels.platform,
       null,
     );
@@ -195,7 +203,7 @@ void main() {
     final TestGesture gesture = await tester.startGesture(textFieldStart, kind: PointerDeviceKind.mouse);
     await tester.pump(const Duration(seconds: 2));
     await gesture.up();
-    await tester.pumpAndSettle();
+    await tester.pumpAndSettle(kDoubleTapTimeout);
 
     final FlutterError error = tester.takeException() as FlutterError;
     expect(
@@ -796,7 +804,7 @@ void main() {
           child: SelectableText(
             'abc def ghi',
             dragStartBehavior: DragStartBehavior.down,
-            style: TextStyle(fontFamily: 'Ahem', fontSize: 10.0),
+            style: TextStyle(fontSize: 10.0),
           ),
         ),
       ),
@@ -2070,19 +2078,19 @@ void main() {
               child: SelectableText(
                 'A',
                 key: keyA,
-                style: const TextStyle(fontSize: 10.0),
+                style: const TextStyle(fontFamily: 'FlutterTest', fontSize: 10.0),
                 strutStyle: StrutStyle.disabled,
               ),
             ),
             const Text(
               'abc',
-              style: TextStyle(fontSize: 20.0),
+              style: TextStyle(fontFamily: 'FlutterTest', fontSize: 20.0),
             ),
             Expanded(
               child: SelectableText(
                 'B',
                 key: keyB,
-                style: const TextStyle(fontSize: 30.0),
+                style: const TextStyle(fontFamily: 'FlutterTest', fontSize: 30.0),
                 strutStyle: StrutStyle.disabled,
               ),
             ),
@@ -2091,17 +2099,17 @@ void main() {
       ),
     );
 
-    // The Ahem font extends 0.2 * fontSize below the baseline.
+    // The test font extends 0.25 * fontSize below the baseline.
     // So the three row elements line up like this:
     //
-    //  A  abc  B
-    //  ---------   baseline
-    //  2  4    6   space below the baseline = 0.2 * fontSize
-    //  ---------   rowBottomY
+    //  A    abc  B
+    //  -------------  baseline
+    //  2.5  5    7.5  space below the baseline = 0.25 * fontSize
+    //  -------------  rowBottomY
 
     final double rowBottomY = tester.getBottomLeft(find.byType(Row)).dy;
-    expect(tester.getBottomLeft(find.byKey(keyA)).dy, moreOrLessEquals(rowBottomY - 4.0, epsilon: 1e-3));
-    expect(tester.getBottomLeft(find.text('abc')).dy, moreOrLessEquals(rowBottomY - 2.0, epsilon: 1e-3));
+    expect(tester.getBottomLeft(find.byKey(keyA)).dy, rowBottomY - 5.0);
+    expect(tester.getBottomLeft(find.text('abc')).dy, rowBottomY - 2.5);
     expect(tester.getBottomLeft(find.byKey(keyB)).dy, rowBottomY);
   });
 
@@ -2119,18 +2127,18 @@ void main() {
               child: SelectableText(
                 'A',
                 key: keyA,
-                style: const TextStyle(fontSize: 10.0),
+                style: const TextStyle(fontFamily: 'FlutterTest', fontSize: 10.0),
               ),
             ),
             const Text(
               'abc',
-              style: TextStyle(fontSize: 20.0),
+              style: TextStyle(fontFamily: 'FlutterTest', fontSize: 20.0),
             ),
             Expanded(
               child: SelectableText(
                 'B',
                 key: keyB,
-                style: const TextStyle(fontSize: 30.0),
+                style: const TextStyle(fontFamily: 'FlutterTest', fontSize: 30.0),
               ),
             ),
           ],
@@ -2138,17 +2146,17 @@ void main() {
       ),
     );
 
-    // The Ahem font extends 0.2 * fontSize below the baseline.
+    // The test font extends 0.25 * fontSize below the baseline.
     // So the three row elements line up like this:
     //
-    //  A  abc  B
-    //  ---------   baseline
-    //  2  4    6   space below the baseline = 0.2 * fontSize
-    //  ---------   rowBottomY
+    //  A    abc  B
+    //  -------------  baseline
+    //  2.5  5    7.5  space below the baseline = 0.25 * fontSize
+    //  -------------  rowBottomY
 
     final double rowBottomY = tester.getBottomLeft(find.byType(Row)).dy;
-    expect(tester.getBottomLeft(find.byKey(keyA)).dy, moreOrLessEquals(rowBottomY - 4.0, epsilon: 1e-3));
-    expect(tester.getBottomLeft(find.text('abc')).dy, moreOrLessEquals(rowBottomY - 2.0, epsilon: 1e-3));
+    expect(tester.getBottomLeft(find.byKey(keyA)).dy, rowBottomY - 5.0);
+    expect(tester.getBottomLeft(find.text('abc')).dy, rowBottomY - 2.5);
     expect(tester.getBottomLeft(find.byKey(keyB)).dy, rowBottomY);
   });
 
@@ -2296,6 +2304,7 @@ void main() {
         ),
       ],
     ), ignoreTransform: true, ignoreRect: true));
+    semantics.dispose();
   });
 
   testWidgets('SelectableText semantics, enableInteractiveSelection = false', (WidgetTester tester) async {
@@ -2443,7 +2452,7 @@ void main() {
   testWidgets('semantic nodes of offscreen recognizers are marked hidden', (WidgetTester tester) async {
     // Regression test for https://github.com/flutter/flutter/issues/100395.
     final SemanticsTester semantics = SemanticsTester(tester);
-    const TextStyle textStyle = TextStyle(fontFamily: 'Ahem', fontSize: 200);
+    const TextStyle textStyle = TextStyle(fontSize: 200);
     const String onScreenText = 'onscreen\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n';
     const String offScreenText = 'off screen';
     final ScrollController controller = ScrollController();
@@ -2704,14 +2713,6 @@ void main() {
     ));
 
     semantics.dispose();
-  });
-
-  testWidgets('SelectableText throws when not descended from a MediaQuery widget', (WidgetTester tester) async {
-    const Widget selectableText = SelectableText('something');
-    await tester.pumpWidget(selectableText);
-    final dynamic exception = tester.takeException();
-    expect(exception, isFlutterError);
-    expect(exception.toString(), startsWith('No MediaQuery widget ancestor found.\nSelectableText widgets require a MediaQuery widget ancestor.'));
   });
 
   testWidgets('onTap is called upon tap', (WidgetTester tester) async {
@@ -3906,6 +3907,7 @@ void main() {
       expect(find.byType(CupertinoButton), findsNWidgets(1));
 
       // Double tap selecting the same word somewhere else is fine.
+      await tester.pumpAndSettle(kDoubleTapTimeout);
       await tester.tapAt(selectableTextStart + const Offset(10.0, 5.0));
       await tester.pump(const Duration(milliseconds: 50));
       // First tap moved the cursor.
@@ -3927,6 +3929,7 @@ void main() {
       editableTextState.hideToolbar();
       await tester.pumpAndSettle();
 
+      await tester.pumpAndSettle(kDoubleTapTimeout);
       await tester.tapAt(selectableTextStart + const Offset(150.0, 5.0));
       await tester.pump(const Duration(milliseconds: 50));
       // First tap moved the cursor.
@@ -4134,7 +4137,7 @@ void main() {
     (WidgetTester tester) async {
       await tester.pumpWidget(
         MaterialApp(
-          theme: ThemeData(platform: TargetPlatform.android),
+          theme: ThemeData(platform: TargetPlatform.android, useMaterial3: false),
           home: const Material(
             child: Center(
               child: SelectableText('something'),
@@ -4157,7 +4160,7 @@ void main() {
     (WidgetTester tester) async {
       await tester.pumpWidget(
         MaterialApp(
-          theme: ThemeData(platform: TargetPlatform.android),
+          theme: ThemeData(platform: TargetPlatform.android, useMaterial3: false),
           home: const Material(
             child: Center(
               child: SelectableText(
@@ -4178,7 +4181,7 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
-          theme: ThemeData(platform: TargetPlatform.android),
+          theme: ThemeData(platform: TargetPlatform.android, useMaterial3: false),
           home: const Material(
             child: Center(
               child: SelectableText(
@@ -4204,7 +4207,7 @@ void main() {
     (WidgetTester tester) async {
       await tester.pumpWidget(
         MaterialApp(
-          theme: ThemeData(platform: TargetPlatform.android),
+          theme: ThemeData(platform: TargetPlatform.android, useMaterial3: false),
           home: const Material(
             child: Center(
               child: SelectableText(
@@ -4228,7 +4231,7 @@ void main() {
     (WidgetTester tester) async {
       await tester.pumpWidget(
         MaterialApp(
-          theme: ThemeData(platform: TargetPlatform.android),
+          theme: ThemeData(platform: TargetPlatform.android, useMaterial3: false),
           home: const Material(
             child: Center(
               child: SelectableText(
@@ -4260,7 +4263,7 @@ void main() {
     (WidgetTester tester) async {
       await tester.pumpWidget(
         MaterialApp(
-          theme: ThemeData(platform: TargetPlatform.android),
+          theme: ThemeData(platform: TargetPlatform.android, useMaterial3: false),
           home: const Material(
             child: Center(
               child: SelectableText(
@@ -4289,7 +4292,7 @@ void main() {
     (WidgetTester tester) async {
       await tester.pumpWidget(
         MaterialApp(
-          theme: ThemeData(platform: TargetPlatform.android),
+          theme: ThemeData(platform: TargetPlatform.android, useMaterial3: false),
           home: const Material(
             child: Center(
               child: SelectableText(
@@ -4318,7 +4321,7 @@ void main() {
     (WidgetTester tester) async {
       await tester.pumpWidget(
         MaterialApp(
-          theme: ThemeData(platform: TargetPlatform.android),
+          theme: ThemeData(platform: TargetPlatform.android, useMaterial3: false),
           home: const Material(
             child: Center(
               child: SelectableText(
@@ -5023,6 +5026,7 @@ void main() {
 
     await tester.pumpWidget(
       MaterialApp(
+        theme: ThemeData(useMaterial3: false),
         home: Material(
           child: Center(
             child: SelectableText(
@@ -5085,10 +5089,11 @@ void main() {
   testWidgets('text selection style 1', (WidgetTester tester) async {
     await tester.pumpWidget(
       MaterialApp(
-        home: Material(
+        theme: ThemeData(useMaterial3: false),
+        home: const Material(
           child: Center(
             child: Column(
-              children: const <Widget>[
+              children: <Widget>[
                 SelectableText.rich(
                   TextSpan(
                     children: <TextSpan>[
@@ -5137,10 +5142,11 @@ void main() {
   testWidgets('text selection style 2', (WidgetTester tester) async {
     await tester.pumpWidget(
       MaterialApp(
-        home: Material(
+        theme: ThemeData(useMaterial3: false),
+        home: const Material(
           child: Center(
             child: Column(
-              children: const <Widget>[
+              children: <Widget>[
                 SelectableText.rich(
                   TextSpan(
                     children: <TextSpan>[
@@ -5188,6 +5194,7 @@ void main() {
   testWidgets('keeps alive when has focus', (WidgetTester tester) async {
     await tester.pumpWidget(
       MaterialApp(
+        theme: ThemeData(useMaterial3: false),
         home: DefaultTabController(
           length: 2,
           child: Scaffold(
@@ -5351,8 +5358,9 @@ void main() {
     const TextStyle textStyle = TextStyle(color: Color(0xff00ff00), fontSize: 12.0);
 
     await tester.pumpWidget(
-      const MaterialApp(
-        home: SelectableText.rich(
+      MaterialApp(
+        theme: ThemeData(useMaterial3: false),
+        home: const SelectableText.rich(
           TextSpan(
             text: 'Abcd',
             style: textStyle,
@@ -5363,5 +5371,101 @@ void main() {
 
     final EditableText editableText = tester.widget(find.byType(EditableText));
     expect(editableText.style.fontSize, textStyle.fontSize);
+  });
+
+  testWidgets('SelectableText text span style is merged with default text style', (WidgetTester tester) async {
+    TextSelection? selection;
+    int count = 0;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(useMaterial3: false),
+        home: SelectableText(
+          'I love Flutter!',
+          onSelectionChanged: (TextSelection s, _) {
+            selection = s;
+            count++;
+          },
+        ),
+      ),
+    );
+
+    expect(selection, null);
+    expect(count, 0);
+
+    // Tap to put the cursor before the "F".
+    const int index = 7;
+    await tester.tapAt(textOffsetToPosition(tester, index));
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(
+      selection,
+      const TextSelection.collapsed(offset: index),
+    );
+    expect(count, 1); // The `onSelectionChanged` will be triggered one time.
+
+    // Tap on the same location again.
+    await tester.tapAt(textOffsetToPosition(tester, index));
+    await tester.pump(const Duration(milliseconds: 50));
+    expect(
+      selection,
+      const TextSelection.collapsed(offset: index),
+    );
+    expect(count, 1); // The `onSelectionChanged` will not be triggered.
+  });
+
+  testWidgets("Off-screen selected text doesn't throw exception", (WidgetTester tester) async {
+    // This is a regression test for https://github.com/flutter/flutter/issues/123527
+
+    TextSelection? selection;
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(useMaterial3: false),
+        home: Material(
+          child: Builder(
+            builder: (BuildContext context) {
+              return Column(
+                children: <Widget>[
+                  Expanded(
+                    child: ListView.builder(
+                      itemCount: 100,
+                      itemBuilder: (BuildContext context, int index) {
+                        return SelectableText(
+                          'I love Flutter! $index',
+                          onSelectionChanged: (TextSelection s, _) {
+                            selection = s;
+                          },
+                        );
+                      },
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: () {
+                      Navigator.pop(context);
+                    },
+                    child: const Text('Pop'),
+                  ),
+                ],
+              );
+            }
+          ),
+        ),
+    ));
+
+    expect(selection, null);
+
+    final Offset selectableTextStart = tester.getTopLeft(find.byType(SelectableText).first);
+    final TestGesture gesture = await tester.startGesture(selectableTextStart + const Offset(50, 5));
+    await tester.pump(const Duration(milliseconds: 500));
+    await gesture.up();
+
+    expect(selection, isNotNull);
+
+    await tester.drag(find.byType(ListView), const Offset(0.0, -3000.0));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Pop'));
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
   });
 }

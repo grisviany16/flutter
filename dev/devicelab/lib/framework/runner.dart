@@ -68,7 +68,7 @@ Future<void> runTasks(
       } else {
         section('Flaky status for "$taskName"');
         if (retry > 0) {
-          print('Total ${retry+1} executions: $retry failures and 1 false positive.');
+          print('Total ${retry + 1} executions: $retry failures and 1 false positive.');
           print('flaky: true');
           // TODO(ianh): stop ignoring this failure. We should set exitCode=1, and quit
           // if exitOnFirstTestFailure is true.
@@ -153,6 +153,7 @@ Future<TaskResult> runTask(
   bool terminateStrayDartProcesses = false,
   bool silent = false,
   String? localEngine,
+  String? localWebSdk,
   String? localEngineSrcPath,
   String? deviceId,
   List<String>? taskArgs,
@@ -172,6 +173,8 @@ Future<TaskResult> runTask(
       ..add('--browser-name=android-chrome');
   }
 
+  stdout.writeln('Starting process for task: [$taskName]');
+
   final Process runner = await startProcess(
     dartBin,
     <String>[
@@ -179,13 +182,13 @@ Future<TaskResult> runTask(
       '--enable-vm-service=0', // zero causes the system to choose a free port
       '--no-pause-isolates-on-exit',
       if (localEngine != null) '-DlocalEngine=$localEngine',
+      if (localWebSdk != null) '-DlocalWebSdk=$localWebSdk',
       if (localEngineSrcPath != null) '-DlocalEngineSrcPath=$localEngineSrcPath',
       taskExecutable,
       ...?taskArgs,
     ],
     environment: <String, String>{
-      if (deviceId != null)
-        DeviceIdEnvName: deviceId,
+      if (deviceId != null) DeviceIdEnvName: deviceId,
     },
   );
 
@@ -202,13 +205,13 @@ Future<TaskResult> runTask(
       .transform<String>(const LineSplitter())
       .listen((String line) {
     if (!uri.isCompleted) {
-      final Uri? serviceUri = parseServiceUri(line, prefix: RegExp('(Observatory|The Dart VM service is) listening on '));
+      final Uri? serviceUri = parseServiceUri(line, prefix: RegExp('The Dart VM service is listening on '));
       if (serviceUri != null) {
         uri.complete(serviceUri);
       }
     }
     if (!silent) {
-      stdout.writeln('[$taskName] [STDOUT] $line');
+      stdout.writeln('[${DateTime.now()}] [STDOUT] $line');
     }
   });
 
@@ -216,7 +219,7 @@ Future<TaskResult> runTask(
       .transform<String>(const Utf8Decoder())
       .transform<String>(const LineSplitter())
       .listen((String line) {
-    stderr.writeln('[$taskName] [STDERR] $line');
+    stderr.writeln('[${DateTime.now()}] [STDERR] $line');
   });
 
   try {
@@ -228,7 +231,8 @@ Future<TaskResult> runTask(
       'ext.cocoonRunTask',
       args: isolateParams,
       isolateId: result.isolate.id,
-    )).json!;
+    ))
+        .json!;
     final TaskResult taskResult = TaskResult.fromJson(taskResultJson);
     final int exitCode = await runner.exitCode;
     print('[$taskName] Process terminated with exit code $exitCode.');
@@ -296,7 +300,7 @@ Future<VmService> vmServiceConnectUri(String wsUri, {Log? log}) async {
   final Completer<dynamic> streamClosedCompleter = Completer<dynamic>();
   socket.listen(
     (dynamic data) {
-      final Map<String, dynamic> rawData = json.decode(data as String) as Map<String, dynamic> ;
+      final Map<String, dynamic> rawData = json.decode(data as String) as Map<String, dynamic>;
       if (rawData['result'] == 'ready') {
         rawData['result'] = <String, dynamic>{'response': 'ready'};
         controller.add(json.encode(rawData));

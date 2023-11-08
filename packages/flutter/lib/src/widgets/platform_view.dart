@@ -78,10 +78,7 @@ class AndroidView extends StatefulWidget {
     this.creationParams,
     this.creationParamsCodec,
     this.clipBehavior = Clip.hardEdge,
-  }) : assert(viewType != null),
-       assert(hitTestBehavior != null),
-       assert(creationParams == null || creationParamsCodec != null),
-       assert(clipBehavior != null);
+  }) : assert(creationParams == null || creationParamsCodec != null);
 
   /// The unique identifier for Android view type to be embedded by this widget.
   ///
@@ -202,8 +199,6 @@ class AndroidView extends StatefulWidget {
 // TODO(ychris): remove the documentation for conic path not supported once https://github.com/flutter/flutter/issues/35062 is resolved.
 /// Embeds an iOS view in the Widget hierarchy.
 ///
-/// {@macro flutter.rendering.RenderUiKitView}
-///
 /// Embedding iOS views is an expensive operation and should be avoided when a Flutter
 /// equivalent is possible.
 ///
@@ -216,6 +211,7 @@ class AndroidView extends StatefulWidget {
 /// Construction of UIViews is done asynchronously, before the UIView is ready this widget paints
 /// nothing while maintaining the same layout constraints.
 ///
+/// Clipping operations on a UiKitView can result slow performance.
 /// If a conic path clipping is applied to a UIKitView,
 /// a quad path is used to approximate the clip due to limitation of Quartz.
 class UiKitView extends StatefulWidget {
@@ -231,9 +227,7 @@ class UiKitView extends StatefulWidget {
     this.creationParams,
     this.creationParamsCodec,
     this.gestureRecognizers,
-  }) : assert(viewType != null),
-       assert(hitTestBehavior != null),
-       assert(creationParams == null || creationParamsCodec != null);
+  }) : assert(creationParams == null || creationParamsCodec != null);
 
   // TODO(amirh): reference the iOS API doc once available.
   /// The unique identifier for iOS view type to be embedded by this widget.
@@ -351,8 +345,8 @@ class HtmlElementView extends StatelessWidget {
     super.key,
     required this.viewType,
     this.onPlatformViewCreated,
-  }) : assert(viewType != null),
-       assert(kIsWeb, 'HtmlElementView is only available on Flutter Web.');
+    this.creationParams,
+  });
 
   /// The unique identifier for the HTML view type to be embedded by this widget.
   ///
@@ -364,8 +358,12 @@ class HtmlElementView extends StatelessWidget {
   /// May be null.
   final PlatformViewCreatedCallback? onPlatformViewCreated;
 
+  /// Passed as the 2nd argument (i.e. `params`) of the registered view factory.
+  final Object? creationParams;
+
   @override
   Widget build(BuildContext context) {
+    assert(kIsWeb, 'HtmlElementView is only available on Flutter Web.');
     return PlatformViewLink(
       viewType: viewType,
       onCreatePlatformView: _createHtmlElementView,
@@ -381,7 +379,11 @@ class HtmlElementView extends StatelessWidget {
 
   /// Creates the controller and kicks off its initialization.
   _HtmlElementViewController _createHtmlElementView(PlatformViewCreationParams params) {
-    final _HtmlElementViewController controller = _HtmlElementViewController(params.id, viewType);
+    final _HtmlElementViewController controller = _HtmlElementViewController(
+      params.id,
+      viewType,
+      creationParams,
+    );
     controller._initialize().then((_) {
       params.onPlatformViewCreated(params.id);
       onPlatformViewCreated?.call(params.id);
@@ -394,6 +396,7 @@ class _HtmlElementViewController extends PlatformViewController {
   _HtmlElementViewController(
     this.viewId,
     this.viewType,
+    this.creationParams,
   );
 
   @override
@@ -404,12 +407,15 @@ class _HtmlElementViewController extends PlatformViewController {
   /// A PlatformViewFactory for this type must have been registered.
   final String viewType;
 
+  final dynamic creationParams;
+
   bool _initialized = false;
 
   Future<void> _initialize() async {
     final Map<String, dynamic> args = <String, dynamic>{
       'id': viewId,
       'viewType': viewType,
+      'params': creationParams,
     };
     await SystemChannels.platform_views.invokeMethod<void>('create', args);
     _initialized = true;
@@ -492,7 +498,7 @@ class _AndroidViewState extends State<AndroidView> {
     _layoutDirection = newLayoutDirection;
 
     if (widget.viewType != oldWidget.viewType) {
-      _controller.dispose();
+      _controller.disposePostFrame();
       _createNewAndroidView();
       return;
     }
@@ -510,6 +516,8 @@ class _AndroidViewState extends State<AndroidView> {
   @override
   void dispose() {
     _controller.dispose();
+    _focusNode?.dispose();
+    _focusNode = null;
     super.dispose();
   }
 
@@ -569,7 +577,9 @@ class _UiKitViewState extends State<UiKitView> {
   UiKitViewController? _controller;
   TextDirection? _layoutDirection;
   bool _initialized = false;
-  late FocusNode _focusNode;
+
+  @visibleForTesting
+  FocusNode? focusNode;
 
   static final Set<Factory<OneSequenceGestureRecognizer>> _emptyRecognizersSet =
     <Factory<OneSequenceGestureRecognizer>>{};
@@ -581,7 +591,7 @@ class _UiKitViewState extends State<UiKitView> {
       return const SizedBox.expand();
     }
     return Focus(
-      focusNode: _focusNode,
+      focusNode: focusNode,
       onFocusChange: (bool isFocused) => _onFocusChange(isFocused, controller),
       child: _UiKitPlatformView(
         controller: _controller!,
@@ -641,6 +651,9 @@ class _UiKitViewState extends State<UiKitView> {
   @override
   void dispose() {
     _controller?.dispose();
+    _controller = null;
+    focusNode?.dispose();
+    focusNode = null;
     super.dispose();
   }
 
@@ -653,7 +666,7 @@ class _UiKitViewState extends State<UiKitView> {
       creationParams: widget.creationParams,
       creationParamsCodec: widget.creationParamsCodec,
       onFocus: () {
-        _focusNode.requestFocus();
+        focusNode?.requestFocus();
       }
     );
     if (!mounted) {
@@ -663,7 +676,7 @@ class _UiKitViewState extends State<UiKitView> {
     widget.onPlatformViewCreated?.call(id);
     setState(() {
       _controller = controller;
-      _focusNode = FocusNode(debugLabel: 'UiKitView(id: $id)');
+      focusNode = FocusNode(debugLabel: 'UiKitView(id: $id)');
     });
   }
 
@@ -687,10 +700,7 @@ class _AndroidPlatformView extends LeafRenderObjectWidget {
     required this.hitTestBehavior,
     required this.gestureRecognizers,
     this.clipBehavior = Clip.hardEdge,
-  }) : assert(controller != null),
-       assert(hitTestBehavior != null),
-       assert(gestureRecognizers != null),
-       assert(clipBehavior != null);
+  });
 
   final AndroidViewController controller;
   final PlatformViewHitTestBehavior hitTestBehavior;
@@ -720,9 +730,7 @@ class _UiKitPlatformView extends LeafRenderObjectWidget {
     required this.controller,
     required this.hitTestBehavior,
     required this.gestureRecognizers,
-  }) : assert(controller != null),
-       assert(hitTestBehavior != null),
-       assert(gestureRecognizers != null);
+  });
 
   final UiKitViewController controller;
   final PlatformViewHitTestBehavior hitTestBehavior;
@@ -757,8 +765,7 @@ class PlatformViewCreationParams {
     required this.viewType,
     required this.onPlatformViewCreated,
     required this.onFocusChanged,
-  }) : assert(id != null),
-       assert(onPlatformViewCreated != null);
+  });
 
   /// The unique identifier for the new platform view.
   ///
@@ -845,10 +852,7 @@ class PlatformViewLink extends StatefulWidget {
     required PlatformViewSurfaceFactory surfaceFactory,
     required CreatePlatformViewCallback onCreatePlatformView,
     required this.viewType,
-    }) : assert(surfaceFactory != null),
-         assert(onCreatePlatformView != null),
-         assert(viewType != null),
-         _surfaceFactory = surfaceFactory,
+    }) : _surfaceFactory = surfaceFactory,
          _onCreatePlatformView = onCreatePlatformView;
 
 
@@ -906,7 +910,7 @@ class _PlatformViewLinkState extends State<PlatformViewLink> {
     super.didUpdateWidget(oldWidget);
 
     if (widget.viewType != oldWidget.viewType) {
-      _controller?.dispose();
+      _controller?.disposePostFrame();
       // The _surface has to be recreated as its controller is disposed.
       // Setting _surface to null will trigger its creation in build().
       _surface = null;
@@ -927,9 +931,11 @@ class _PlatformViewLinkState extends State<PlatformViewLink> {
   }
 
   void _onPlatformViewCreated(int id) {
-    setState(() {
-      _platformViewCreated = true;
-    });
+    if (mounted) {
+      setState(() {
+        _platformViewCreated = true;
+      });
+    }
   }
 
   void _handleFrameworkFocusChanged(bool isFocused) {
@@ -952,6 +958,8 @@ class _PlatformViewLinkState extends State<PlatformViewLink> {
   void dispose() {
     _controller?.dispose();
     _controller = null;
+    _focusNode?.dispose();
+    _focusNode = null;
     super.dispose();
   }
 }
@@ -983,9 +991,7 @@ class PlatformViewSurface extends LeafRenderObjectWidget {
     required this.controller,
     required this.hitTestBehavior,
     required this.gestureRecognizers,
-  }) : assert(controller != null),
-       assert(hitTestBehavior != null),
-       assert(gestureRecognizers != null);
+  });
 
   /// The controller for the platform view integrated by this [PlatformViewSurface].
   ///
@@ -1078,9 +1084,7 @@ class AndroidViewSurface extends StatefulWidget {
     required this.controller,
     required this.hitTestBehavior,
     required this.gestureRecognizers,
-  }) : assert(controller != null),
-       assert(hitTestBehavior != null),
-       assert(gestureRecognizers != null);
+  });
 
   /// The controller for the platform view integrated by this [AndroidViewSurface].
   ///
@@ -1106,7 +1110,7 @@ class _AndroidViewSurfaceState extends State<AndroidViewSurface> {
   void initState() {
     super.initState();
     if (!widget.controller.isCreated) {
-      // Schedule a rebuild once creation is complete and the final dislay
+      // Schedule a rebuild once creation is complete and the final display
       // type is known.
       widget.controller.addOnPlatformViewCreatedListener(_onPlatformViewCreated);
     }
@@ -1147,9 +1151,7 @@ class _TextureBasedAndroidViewSurface extends PlatformViewSurface {
     required AndroidViewController super.controller,
     required super.hitTestBehavior,
     required super.gestureRecognizers,
-  }) : assert(controller != null),
-       assert(hitTestBehavior != null),
-       assert(gestureRecognizers != null);
+  });
 
   @override
   RenderObject createRenderObject(BuildContext context) {
@@ -1172,9 +1174,7 @@ class _PlatformLayerBasedAndroidViewSurface extends PlatformViewSurface {
     required AndroidViewController super.controller,
     required super.hitTestBehavior,
     required super.gestureRecognizers,
-  }) : assert(controller != null),
-       assert(hitTestBehavior != null),
-       assert(gestureRecognizers != null);
+  });
 
   @override
   RenderObject createRenderObject(BuildContext context) {
@@ -1231,5 +1231,15 @@ class _PlatformViewPlaceHolder extends SingleChildRenderObjectWidget {
   @override
   void updateRenderObject(BuildContext context, _PlatformViewPlaceholderBox renderObject) {
     renderObject.onLayout = onLayout;
+  }
+}
+
+extension on PlatformViewController {
+  /// Disposes the controller in a post-frame callback, to allow other widgets to
+  /// remove their listeners before the controller is disposed.
+  void disposePostFrame() {
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      dispose();
+    });
   }
 }

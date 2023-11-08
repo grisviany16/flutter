@@ -5,6 +5,7 @@
 // This file is run as part of a reduced test set in CI on Mac and Windows
 // machines.
 @Tags(<String>['reduced-test-set'])
+library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/src/foundation/constants.dart';
@@ -115,6 +116,7 @@ Future<void> _runTest(WidgetTester tester, String positionName, double distanceF
   final Key buttonKey = UniqueKey();
 
   await tester.pumpWidget(MaterialApp(
+    theme: ThemeData(useMaterial3: false),
     home: Scaffold(
       body: Center(
         child: RepaintBoundary(
