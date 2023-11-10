@@ -42,8 +42,15 @@ void main() {
     expect(const ChipThemeData().hashCode, const ChipThemeData().copyWith().hashCode);
   });
 
+  test('ChipThemeData lerp special cases', () {
+    expect(ChipThemeData.lerp(null, null, 0), null);
+    const ChipThemeData data = ChipThemeData();
+    expect(identical(ChipThemeData.lerp(data, data, 0.5), data), true);
+  });
+
   test('ChipThemeData defaults', () {
     const ChipThemeData themeData = ChipThemeData();
+    expect(themeData.color, null);
     expect(themeData.backgroundColor, null);
     expect(themeData.deleteIconColor, null);
     expect(themeData.disabledColor, null);
@@ -80,16 +87,17 @@ void main() {
   testWidgets('ChipThemeData implements debugFillProperties', (WidgetTester tester) async {
     final DiagnosticPropertiesBuilder builder = DiagnosticPropertiesBuilder();
     const ChipThemeData(
-      backgroundColor: Color(0xfffffff0),
-      deleteIconColor: Color(0xfffffff1),
-      disabledColor: Color(0xfffffff2),
-      selectedColor: Color(0xfffffff3),
-      secondarySelectedColor: Color(0xfffffff4),
-      shadowColor: Color(0xfffffff5),
-      surfaceTintColor: Color(0xfffffff8),
-      selectedShadowColor: Color(0xfffffff6),
+      color: MaterialStatePropertyAll<Color>(Color(0xfffffff0)),
+      backgroundColor: Color(0xfffffff1),
+      deleteIconColor: Color(0xfffffff2),
+      disabledColor: Color(0xfffffff3),
+      selectedColor: Color(0xfffffff4),
+      secondarySelectedColor: Color(0xfffffff5),
+      shadowColor: Color(0xfffffff6),
+      surfaceTintColor: Color(0xfffffff7),
+      selectedShadowColor: Color(0xfffffff8),
       showCheckmark: true,
-      checkmarkColor: Color(0xfffffff7),
+      checkmarkColor: Color(0xfffffff9),
       labelPadding: EdgeInsets.all(1),
       padding: EdgeInsets.all(2),
       side: BorderSide(width: 10),
@@ -107,16 +115,17 @@ void main() {
         .toList();
 
     expect(description, <String>[
-      'backgroundColor: Color(0xfffffff0)',
-      'deleteIconColor: Color(0xfffffff1)',
-      'disabledColor: Color(0xfffffff2)',
-      'selectedColor: Color(0xfffffff3)',
-      'secondarySelectedColor: Color(0xfffffff4)',
-      'shadowColor: Color(0xfffffff5)',
-      'surfaceTintColor: Color(0xfffffff8)',
-      'selectedShadowColor: Color(0xfffffff6)',
+      'color: MaterialStatePropertyAll(Color(0xfffffff0))',
+      'backgroundColor: Color(0xfffffff1)',
+      'deleteIconColor: Color(0xfffffff2)',
+      'disabledColor: Color(0xfffffff3)',
+      'selectedColor: Color(0xfffffff4)',
+      'secondarySelectedColor: Color(0xfffffff5)',
+      'shadowColor: Color(0xfffffff6)',
+      'surfaceTintColor: Color(0xfffffff7)',
+      'selectedShadowColor: Color(0xfffffff8)',
       'showCheckmark: true',
-      'checkMarkColor: Color(0xfffffff7)',
+      'checkMarkColor: Color(0xfffffff9)',
       'labelPadding: EdgeInsets.all(1.0)',
       'padding: EdgeInsets.all(2.0)',
       'side: BorderSide(width: 10.0)',
@@ -141,7 +150,7 @@ void main() {
 
     await tester.pumpWidget(
       MaterialApp(
-        theme: ThemeData.light().copyWith(
+        theme: ThemeData.light(useMaterial3: false).copyWith(
           chipTheme: chipTheme,
         ),
         home: Directionality(
@@ -187,7 +196,7 @@ void main() {
 
     await tester.pumpWidget(
       MaterialApp(
-        theme: ThemeData.light().copyWith(
+        theme: ThemeData.light(useMaterial3: false).copyWith(
           chipTheme: shadowedChipTheme,
         ),
         home: ChipTheme(
@@ -236,6 +245,7 @@ void main() {
 
     await tester.pumpWidget(
       MaterialApp(
+        theme: ThemeData(useMaterial3: false),
         home: ChipTheme(
           data: shadowedChipTheme,
           child: Builder(
@@ -322,7 +332,6 @@ void main() {
     expect(chipTheme.elevation, 0.0);
     expect(chipTheme.pressElevation, 8.0);
   });
-
 
   testWidgets('ChipThemeData generates correct opacities for defaults', (WidgetTester tester) async {
     const Color customColor1 = Color(0xcafefeed);
@@ -648,6 +657,7 @@ void main() {
     Widget chipWidget({ bool selected = false }) {
       return MaterialApp(
         theme: ThemeData(
+          useMaterial3: false,
           chipTheme: ThemeData.light().chipTheme.copyWith(
             side: MaterialStateBorderSide.resolveWith(getBorderSide),
           ),
@@ -693,7 +703,7 @@ void main() {
 
     Widget chipWidget({ bool selected = false }) {
       return MaterialApp(
-        theme: ThemeData(chipTheme: chipTheme),
+        theme: ThemeData(useMaterial3: false, chipTheme: chipTheme),
         home: Scaffold(
           body: ChoiceChip(
             label: const Text('Chip'),
@@ -733,7 +743,7 @@ void main() {
 
     Widget chipWidget({ bool selected = false }) {
       return MaterialApp(
-        theme: ThemeData(chipTheme: chipTheme),
+        theme: ThemeData(useMaterial3: false, chipTheme: chipTheme),
         home: Scaffold(
           body: ChoiceChip(
             label: const Text('Chip'),
@@ -751,6 +761,111 @@ void main() {
     // Selected.
     await tester.pumpWidget(chipWidget(selected: true));
     expect(getMaterial(tester).shape, isA<RoundedRectangleBorder>());
+  });
+
+  testWidgets('RawChip uses material state color from ChipTheme', (WidgetTester tester) async {
+    const Color disabledSelectedColor = Color(0xffffff00);
+    const Color disabledColor = Color(0xff00ff00);
+    const Color backgroundColor = Color(0xff0000ff);
+    const Color selectedColor = Color(0xffff0000);
+    Widget buildApp({ required bool enabled, required bool selected }) {
+      return MaterialApp(
+        theme: ThemeData(
+          chipTheme: ChipThemeData(
+            color: MaterialStateProperty.resolveWith((Set<MaterialState> states) {
+              if (states.contains(MaterialState.disabled)
+                && states.contains(MaterialState.selected)) {
+                  return disabledSelectedColor;
+              }
+              if (states.contains(MaterialState.disabled)) {
+                return disabledColor;
+              }
+              if (states.contains(MaterialState.selected)) {
+                return selectedColor;
+              }
+              return backgroundColor;
+            }),
+          ),
+          useMaterial3: true,
+        ),
+        home: Material(
+          child: RawChip(
+            isEnabled: enabled,
+            selected: selected,
+            label: const Text('RawChip'),
+          ),
+        ),
+      );
+    }
+
+    // Check theme color for enabled chip.
+    await tester.pumpWidget(buildApp(enabled: true, selected: false));
+    await tester.pumpAndSettle();
+
+    // Enabled chip should have the provided backgroundColor.
+    expect(getMaterialBox(tester), paints..rrect(color: backgroundColor));
+
+    // Check theme color for disabled chip.
+    await tester.pumpWidget(buildApp(enabled: false, selected: false));
+    await tester.pumpAndSettle();
+
+    // Disabled chip should have the provided disabledColor.
+    expect(getMaterialBox(tester),paints..rrect(color: disabledColor));
+
+    // Check theme color for enabled and selected chip.
+    await tester.pumpWidget(buildApp(enabled: true, selected: true));
+    await tester.pumpAndSettle();
+
+    // Enabled & selected chip should have the provided selectedColor.
+    expect(getMaterialBox(tester), paints..rrect(color: selectedColor));
+
+    // Check theme color for disabled & selected chip.
+    await tester.pumpWidget(buildApp(enabled: false, selected: true));
+    await tester.pumpAndSettle();
+
+    // Disabled & selected chip should have the provided disabledSelectedColor.
+    expect(getMaterialBox(tester), paints..rrect(color: disabledSelectedColor));
+  });
+
+  testWidgets('RawChip uses state colors from ChipTheme', (WidgetTester tester) async {
+    const ChipThemeData chipTheme = ChipThemeData(
+      disabledColor: Color(0xadfefafe),
+      backgroundColor: Color(0xcafefeed),
+      selectedColor: Color(0xbeefcafe),
+    );
+    Widget buildApp({ required bool enabled, required bool selected }) {
+      return MaterialApp(
+        theme: ThemeData(chipTheme: chipTheme, useMaterial3: true),
+        home: Material(
+          child: RawChip(
+            isEnabled: enabled,
+            selected: selected,
+            label: const Text('RawChip'),
+          ),
+        ),
+      );
+    }
+
+    // Check theme color for enabled chip.
+    await tester.pumpWidget(buildApp(enabled: true, selected: false));
+    await tester.pumpAndSettle();
+
+    // Enabled chip should have the provided backgroundColor.
+    expect(getMaterialBox(tester), paints..rrect(color: chipTheme.backgroundColor));
+
+    // Check theme color for disabled chip.
+    await tester.pumpWidget(buildApp(enabled: false, selected: false));
+    await tester.pumpAndSettle();
+
+    // Disabled chip should have the provided disabledColor.
+    expect(getMaterialBox(tester),paints..rrect(color: chipTheme.disabledColor));
+
+    // Check theme color for enabled and selected chip.
+    await tester.pumpWidget(buildApp(enabled: true, selected: true));
+    await tester.pumpAndSettle();
+
+    // Enabled & selected chip should have the provided selectedColor.
+    expect(getMaterialBox(tester), paints..rrect(color: chipTheme.selectedColor));
   });
 }
 

@@ -5,6 +5,7 @@
 // This file is run as part of a reduced test set in CI on Mac and Windows
 // machines.
 @Tags(<String>['reduced-test-set'])
+library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -46,6 +47,12 @@ RenderParagraph _getTextRenderObject(WidgetTester tester, String text) {
 }
 
 void main() {
+  test('DialogTheme lerp special cases', () {
+    expect(DialogTheme.lerp(null, null, 0), const DialogTheme());
+    const DialogTheme theme = DialogTheme();
+    expect(identical(DialogTheme.lerp(theme, theme, 0.5), theme), true);
+  });
+
   testWidgets('Dialog Theme implements debugFillProperties', (WidgetTester tester) async {
     final DiagnosticPropertiesBuilder builder = DiagnosticPropertiesBuilder();
     const DialogTheme(
@@ -164,7 +171,7 @@ void main() {
       actions: <Widget>[ ],
       alignment: Alignment.topRight,
     );
-    final ThemeData theme = ThemeData(dialogTheme: const DialogTheme(alignment: Alignment.bottomLeft));
+    final ThemeData theme = ThemeData(useMaterial3: false, dialogTheme: const DialogTheme(alignment: Alignment.bottomLeft));
 
     await tester.pumpWidget(
       _appWithDialog(tester, dialog, theme: theme),
@@ -186,7 +193,7 @@ void main() {
       title: Text('Title'),
       actions: <Widget>[ ],
     );
-    final ThemeData theme = ThemeData(dialogTheme: const DialogTheme(shape: customBorder));
+    final ThemeData theme = ThemeData(useMaterial3: false, dialogTheme: const DialogTheme(shape: customBorder));
 
     await tester.pumpWidget(_appWithDialog(tester, dialog, theme: theme));
     await tester.tap(find.text('X'));
@@ -241,7 +248,7 @@ void main() {
 
   testWidgets('Custom Icon Color - Theme - lowest preference', (WidgetTester tester) async {
     const Color iconThemeColor = Colors.yellow;
-    final ThemeData theme = ThemeData(iconTheme: const IconThemeData(color: iconThemeColor));
+    final ThemeData theme = ThemeData(useMaterial3: false, iconTheme: const IconThemeData(color: iconThemeColor));
     const AlertDialog dialog = AlertDialog(
       icon: Icon(Icons.ac_unit),
       actions: <Widget>[ ],
@@ -313,7 +320,7 @@ void main() {
       title: Text(titleText),
       actions: <Widget>[ ],
     );
-    final ThemeData theme = ThemeData(textTheme: const TextTheme(titleLarge: titleTextStyle));
+    final ThemeData theme = ThemeData(useMaterial3: false, textTheme: const TextTheme(titleLarge: titleTextStyle));
 
     await tester.pumpWidget(_appWithDialog(tester, dialog, theme: theme));
     await tester.tap(find.text('X'));
@@ -412,7 +419,7 @@ void main() {
       content: Text(contentText),
       actions: <Widget>[ ],
     );
-    final ThemeData theme = ThemeData(textTheme: const TextTheme(titleMedium: contentTextStyle));
+    final ThemeData theme = ThemeData(useMaterial3: false, textTheme: const TextTheme(titleMedium: contentTextStyle));
 
     await tester.pumpWidget(_appWithDialog(tester, dialog, theme: theme));
     await tester.tap(find.text('X'));

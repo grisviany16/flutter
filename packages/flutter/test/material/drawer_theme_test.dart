@@ -12,6 +12,12 @@ void main() {
     expect(const DrawerThemeData().hashCode, const DrawerThemeData().copyWith().hashCode);
   });
 
+  test('DrawerThemeData lerp special cases', () {
+    expect(DrawerThemeData.lerp(null, null, 0), null);
+    const DrawerThemeData data = DrawerThemeData();
+    expect(identical(DrawerThemeData.lerp(data, data, 0.5), data), true);
+  });
+
   testWidgets('Default debugFillProperties', (WidgetTester tester) async {
     final DiagnosticPropertiesBuilder builder = DiagnosticPropertiesBuilder();
     const DrawerThemeData().debugFillProperties(builder);
@@ -54,9 +60,11 @@ void main() {
 
   testWidgets('Default values are used when no Drawer or DrawerThemeData properties are specified', (WidgetTester tester) async {
     final GlobalKey<ScaffoldState> scaffoldKey = GlobalKey<ScaffoldState>();
-    final bool useMaterial3 = ThemeData().useMaterial3;
+    final ThemeData theme = ThemeData();
+    final bool useMaterial3 = theme.useMaterial3;
     await tester.pumpWidget(
       MaterialApp(
+        theme: theme,
         home: Scaffold(
           key: scaffoldKey,
           drawer: const Drawer(),
@@ -66,10 +74,10 @@ void main() {
     scaffoldKey.currentState!.openDrawer();
     await tester.pumpAndSettle();
 
-    expect(_drawerMaterial(tester).color, null);
-    expect(_drawerMaterial(tester).elevation, 16.0);
+    expect(_drawerMaterial(tester).color, useMaterial3 ? theme.colorScheme.surface : null);
+    expect(_drawerMaterial(tester).elevation, useMaterial3 ? 1.0 : 16.0);
     expect(_drawerMaterial(tester).shadowColor, useMaterial3 ? Colors.transparent : ThemeData().shadowColor);
-    expect(_drawerMaterial(tester).surfaceTintColor, useMaterial3 ? ThemeData().colorScheme.surfaceTint : null);
+    expect(_drawerMaterial(tester).surfaceTintColor, useMaterial3 ? theme.colorScheme.surfaceTint : null);
     expect(
       _drawerMaterial(tester).shape,
       useMaterial3
@@ -82,9 +90,11 @@ void main() {
 
   testWidgets('Default values are used when no Drawer or DrawerThemeData properties are specified in end drawer', (WidgetTester tester) async {
     final GlobalKey<ScaffoldState> scaffoldKey = GlobalKey<ScaffoldState>();
-    final bool useMaterial3 = ThemeData().useMaterial3;
+    final ThemeData theme = ThemeData();
+    final bool useMaterial3 = theme.useMaterial3;
     await tester.pumpWidget(
       MaterialApp(
+        theme: theme,
         home: Scaffold(
           key: scaffoldKey,
           endDrawer: const Drawer(),
@@ -94,8 +104,8 @@ void main() {
     scaffoldKey.currentState!.openEndDrawer();
     await tester.pumpAndSettle();
 
-    expect(_drawerMaterial(tester).color, null);
-    expect(_drawerMaterial(tester).elevation, 16.0);
+    expect(_drawerMaterial(tester).color, useMaterial3 ? theme.colorScheme.surface : null);
+    expect(_drawerMaterial(tester).elevation, useMaterial3 ? 1.0 : 16.0);
     expect(_drawerMaterial(tester).shadowColor, useMaterial3 ? Colors.transparent : ThemeData().shadowColor);
     expect(_drawerMaterial(tester).surfaceTintColor, useMaterial3 ? ThemeData().colorScheme.surfaceTint : null);
     expect(

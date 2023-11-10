@@ -11,11 +11,12 @@ import 'package:vm_service/vm_service.dart' as vm;
 import '../base/io.dart';
 import '../cache.dart';
 import '../convert.dart';
+import '../globals.dart' as globals show fs;
 import 'flutter_adapter_args.dart';
 import 'flutter_base_adapter.dart';
 
 /// A DAP Debug Adapter for running and debugging Flutter applications.
-class FlutterDebugAdapter extends FlutterBaseDebugAdapter {
+class FlutterDebugAdapter extends FlutterBaseDebugAdapter with VmServiceInfoFileUtils {
   FlutterDebugAdapter(
     super.channel, {
     required super.fileSystem,
@@ -36,19 +37,17 @@ class FlutterDebugAdapter extends FlutterBaseDebugAdapter {
   /// The appId of the current running Flutter app.
   String? _appId;
 
+  /// A progress reporter for the applications launch progress.
+  ///
+  /// `null` if a launch is not in progress (or has completed).
+  DapProgressReporter? launchProgress;
+
   /// The ID to use for the next request sent to the Flutter run daemon.
   int _flutterRequestId = 1;
 
   /// Outstanding requests that have been sent to the Flutter run daemon and
   /// their handlers.
   final Map<int, Completer<Object?>> _flutterRequestCompleters = <int, Completer<Object?>>{};
-
-  /// Whether or not this adapter can handle the restartRequest.
-  ///
-  /// For Flutter apps we can handle this with a Hot Restart rather than having
-  /// the whole debug session stopped and restarted.
-  @override
-  bool get supportsRestartRequest => true;
 
   /// A list of reverse-requests from `flutter run --machine` that should be forwarded to the client.
   static const Set<String> _requestsToForwardToClient = <String>{
@@ -122,15 +121,28 @@ class FlutterDebugAdapter extends FlutterBaseDebugAdapter {
   @override
   Future<void> attachImpl() async {
     final FlutterAttachRequestArguments args = this.args as FlutterAttachRequestArguments;
+    String? vmServiceUri = args.vmServiceUri;
+    final String? vmServiceInfoFile = args.vmServiceInfoFile;
 
-    final DapProgressReporter progress = startProgressNotification(
+    if (vmServiceUri != null && vmServiceInfoFile != null) {
+      sendConsoleOutput(
+        'To attach, provide only one (or neither) of vmServiceUri/vmServiceInfoFile',
+      );
+      handleSessionTerminate();
+      return;
+    }
+
+    launchProgress = startProgressNotification(
       'launch',
       'Flutter',
       message: 'Attaching…',
     );
-    unawaited(_appStartedCompleter.future.then((_) => progress.end()));
 
-    final String? vmServiceUri = args.vmServiceUri;
+    if (vmServiceUri == null && vmServiceInfoFile != null) {
+      final Uri uriFromFile = await waitForVmServiceInfoFile(logger, globals.fs.file(vmServiceInfoFile));
+      vmServiceUri = uriFromFile.toString();
+    }
+
     final List<String> toolArgs = <String>[
       'attach',
       '--machine',
@@ -144,6 +156,7 @@ class FlutterDebugAdapter extends FlutterBaseDebugAdapter {
       customTool: args.customTool,
       customToolReplacesArgs: args.customToolReplacesArgs,
       userToolArgs: args.toolArgs,
+      targetProgram: args.program,
     );
   }
 
@@ -172,17 +185,17 @@ class FlutterDebugAdapter extends FlutterBaseDebugAdapter {
     switch (request.command) {
       case 'hotRestart':
       case 'hotReload':
+      // This convention is for the internal IDE client.
+      case r'$/hotReload':
         final bool isFullRestart = request.command == 'hotRestart';
         await _performRestart(isFullRestart, args?.args['reason'] as String?);
         sendResponse(null);
-        break;
 
       // Handle requests (from the client) that provide responses to reverse-requests
       // that we forwarded from `flutter run --machine`.
       case 'flutter.sendForwardedRequestResponse':
         _handleForwardedResponse(args);
         sendResponse(null);
-        break;
 
       default:
         await super.customRequest(request, args, sendResponse);
@@ -198,12 +211,9 @@ class FlutterDebugAdapter extends FlutterBaseDebugAdapter {
         switch (event.extensionKind) {
           case 'Flutter.ServiceExtensionStateChanged':
             _sendServiceExtensionStateChanged(event.extensionData);
-            break;
           case 'Flutter.Error':
             _handleFlutterErrorEvent(event.extensionData);
-            break;
         }
-        break;
     }
   }
 
@@ -230,12 +240,11 @@ class FlutterDebugAdapter extends FlutterBaseDebugAdapter {
   Future<void> launchImpl() async {
     final FlutterLaunchRequestArguments args = this.args as FlutterLaunchRequestArguments;
 
-    final DapProgressReporter progress = startProgressNotification(
+    launchProgress = startProgressNotification(
       'launch',
       'Flutter',
       message: 'Launching…',
     );
-    unawaited(_appStartedCompleter.future.then((_) => progress.end()));
 
     final List<String> toolArgs = <String>[
       'run',
@@ -342,6 +351,7 @@ class FlutterDebugAdapter extends FlutterBaseDebugAdapter {
     final String messageString = jsonEncode(message);
     // Flutter requests are always wrapped in brackets as an array.
     final String payload = '[$messageString]\n';
+    _logTraffic('==> [Flutter] $payload');
     process.stdin.writeln(payload);
   }
 
@@ -349,7 +359,7 @@ class FlutterDebugAdapter extends FlutterBaseDebugAdapter {
   @override
   Future<void> terminateImpl() async {
     if (isAttach) {
-      await preventBreakingAndResume();
+      await handleDetach();
     }
 
     // Send a request to stop/detach to give Flutter chance to do some cleanup.
@@ -394,10 +404,28 @@ class FlutterDebugAdapter extends FlutterBaseDebugAdapter {
     if (_appId == null) {
       throw DebugAdapterException('Unexpected null `appId` in app.start event');
     }
+
+    // Notify the client whether it can call 'restartRequest' when the user
+    // clicks restart, instead of terminating and re-starting its own debug
+    // session (which is much slower, but required for profile/release mode).
+    final bool supportsRestart = (params['supportsRestart'] as bool?) ?? false;
+    sendEvent(CapabilitiesEventBody(capabilities: Capabilities(supportsRestartRequest: supportsRestart)));
+
+    // Send a custom event so the editor has info about the app starting.
+    //
+    // This message contains things like the `deviceId` and `mode` that the
+    // client might not know about if they were inferred or set by users custom
+    // args.
+    sendEvent(
+      RawEventBody(params),
+      eventType: 'flutter.appStart',
+    );
   }
 
   /// Handles the app.started event from Flutter.
   Future<void> _handleAppStarted() async {
+    launchProgress?.end();
+    launchProgress = null;
     _appStartedCompleter.complete();
 
     // Send a custom event so the editor knows the app has started.
@@ -441,7 +469,7 @@ class FlutterDebugAdapter extends FlutterBaseDebugAdapter {
   @override
   void handleExitCode(int code) {
     final String codeSuffix = code == 0 ? '' : ' ($code)';
-    logger?.call('Process exited ($code)');
+    _logTraffic('<== [Flutter] Process exited ($code)');
     handleSessionTerminate(codeSuffix);
   }
 
@@ -451,16 +479,12 @@ class FlutterDebugAdapter extends FlutterBaseDebugAdapter {
     switch (event) {
       case 'daemon.connected':
         _handleDaemonConnected(params);
-        break;
       case 'app.debugPort':
         _handleDebugPort(params);
-        break;
       case 'app.start':
         _handleAppStart(params);
-        break;
       case 'app.started':
         _handleAppStarted();
-        break;
     }
 
     if (_eventsToForwardToClient.contains(event)) {
@@ -500,8 +524,10 @@ class FlutterDebugAdapter extends FlutterBaseDebugAdapter {
     final Completer<Object?> completer = Completer<Object?>();
     _reverseRequestCompleters[id] = completer;
     completer.future
-        .then((Object? value) => sendResponseToFlutter(id, value))
-        .catchError((Object? e) => sendResponseToFlutter(id, e.toString(), error: true));
+        .then(
+          (Object? value) => sendResponseToFlutter(id, value),
+          onError: (Object? e) => sendResponseToFlutter(id, e.toString(), error: true),
+        );
 
     if (_requestsToForwardToClient.contains(method)) {
       // Forward the request to the client in an event.
@@ -553,7 +579,7 @@ class FlutterDebugAdapter extends FlutterBaseDebugAdapter {
 
   @override
   void handleStderr(List<int> data) {
-    logger?.call('stderr: $data');
+    _logTraffic('<== [Flutter] [stderr] $data');
     sendOutput('stderr', utf8.decode(data));
   }
 
@@ -569,7 +595,7 @@ class FlutterDebugAdapter extends FlutterBaseDebugAdapter {
     // - the item has an "event" field that is a String
     // - the item has a "params" field that is a Map<String, Object?>?
 
-    logger?.call('stdout: $data');
+    _logTraffic('<== [Flutter] $data');
 
     // Output is sent as console (eg. output from tooling) until the app has
     // started, then stdout (users output). This is so info like
@@ -582,7 +608,7 @@ class FlutterDebugAdapter extends FlutterBaseDebugAdapter {
     // debugging, we must try to detect which messages are likely Flutter
     // messages as reliably as possible, as trying to process users output
     // as a Flutter message may result in an unhandled error that will
-    // terminate the debug adater in a way that does not provide feedback
+    // terminate the debug adapter in a way that does not provide feedback
     // because the standard crash violates the DAP protocol.
     Object? jsonData;
     try {
@@ -591,6 +617,16 @@ class FlutterDebugAdapter extends FlutterBaseDebugAdapter {
       // If the output wasn't valid JSON, it was standard stdout that should
       // be passed through to the user.
       sendOutput(outputCategory, data);
+
+      // Detect if the output contains a prompt about using the Dart Debug
+      // extension and also update the progress notification to make it clearer
+      // we're waiting for the user to do something.
+      if (data.contains('Waiting for connection from Dart debug extension')) {
+        launchProgress?.update(
+          message: 'Please click the Dart Debug extension button in the spawned browser window',
+        );
+      }
+
       return;
     }
 
@@ -623,11 +659,33 @@ class FlutterDebugAdapter extends FlutterBaseDebugAdapter {
     }
   }
 
+  /// Logs JSON traffic to aid debugging.
+  ///
+  /// If `sendLogsToClient` was `true` in the launch/attach config, logs will
+  /// also be sent back to the client in a "dart.log" event to simplify
+  /// capturing logs from the IDE (such as using the **Dart: Capture Logs**
+  /// command in VS Code).
+  void _logTraffic(String message) {
+    logger?.call(message);
+    if (sendLogsToClient) {
+      sendEvent(
+        RawEventBody(<String, String>{'message': message}),
+        eventType: 'dart.log',
+      );
+    }
+  }
+
   /// Performs a restart/reload by sending the `app.restart` message to the `flutter run --machine` process.
   Future<void> _performRestart(
     bool fullRestart, [
     String? reason,
   ]) async {
+    // Don't do anything if the app hasn't started yet, as restarts and reloads
+    // can only operate on a running app.
+    if (_appId == null) {
+      return;
+    }
+
     final String progressId = fullRestart ? 'hotRestart' : 'hotReload';
     final String progressMessage = fullRestart ? 'Hot restarting…' : 'Hot reloading…';
     final DapProgressReporter progress = startProgressNotification(

@@ -2,17 +2,12 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-// no-shuffle:
-//   //TODO(gspencergoog): Remove this tag once this test's state leaks/test
-//   dependencies have been fixed.
-//   https://github.com/flutter/flutter/issues/85160
-//   Fails with "flutter test --test-randomize-ordering-seed=456"
 // reduced-test-set:
 //   This file is run as part of a reduced test set in CI on Mac and Windows
 //   machines.
-@Tags(<String>['reduced-test-set', 'no-shuffle'])
-
+@Tags(<String>['reduced-test-set'])
 @TestOn('!chrome')
+library;
 
 import 'dart:convert';
 import 'dart:math';
@@ -220,6 +215,14 @@ class RepaintBoundaryWithDebugPaint extends RepaintBoundary {
   }
 }
 
+Widget _applyConstructor(Widget Function() constructor) => constructor();
+
+class _TrivialWidget extends StatelessWidget {
+  const _TrivialWidget() : super(key: const Key('singleton'));
+  @override
+  Widget build(BuildContext context) => const Text('Hello, world!');
+}
+
 int getChildLayerCount(OffsetLayer layer) {
   Layer? child = layer.firstChild;
   int count = 0;
@@ -230,7 +233,48 @@ int getChildLayerCount(OffsetLayer layer) {
   return count;
 }
 
+extension TextFromString on String {
+  @widgetFactory
+  Widget text() {
+    return Text(this);
+  }
+}
+
+final List<Object> _weakValueTests = <Object>[1, 1.0, 'hello', true, false, Object(), <int>[3, 4], DateTime(2023)];
+
 void main() {
+  group('$InspectorReferenceData', (){
+    for (final Object item in _weakValueTests) {
+      test('can be created for any type but $Record, $item', () async {
+        final InspectorReferenceData weakValue = InspectorReferenceData(item, 'id');
+        expect(weakValue.value, item);
+      });
+    }
+
+    test('throws for $Record', () async {
+      expect(()=> InspectorReferenceData((1, 2), 'id'), throwsA(isA<ArgumentError>()));
+    });
+  });
+
+  group('$WeakMap', (){
+    for (final Object item in _weakValueTests) {
+      test('assigns and removes value, $item', () async {
+        final WeakMap<Object, Object> weakMap = WeakMap<Object, Object>();
+        weakMap[item] = 1;
+        expect(weakMap[item], 1);
+        expect(weakMap.remove(item), 1);
+        expect(weakMap[item], null);
+      });
+    }
+
+    for (final Object item in _weakValueTests) {
+      test('returns null for absent value, $item', () async {
+        final WeakMap<Object, Object> weakMap = WeakMap<Object, Object>();
+        expect(weakMap[item], null);
+      });
+    }
+  });
+
   _TestWidgetInspectorService.runTests();
 }
 
@@ -240,17 +284,28 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
     final TestWidgetInspectorService service = TestWidgetInspectorService();
     WidgetInspectorService.instance = service;
 
-    tearDown(() {
+    tearDown(() async {
       service.resetAllState();
+
+      if (WidgetInspectorService.instance.isWidgetCreationTracked()) {
+        await service.testBoolExtension(
+          WidgetInspectorServiceExtensions.trackRebuildDirtyWidgets.name,
+          <String, String>{'enabled': 'false'},
+        );
+      }
+    });
+
+    test ('objectToDiagnosticsNode returns null for non-diagnosticable', () {
+      expect(WidgetInspectorService.objectToDiagnosticsNode(Alignment.bottomCenter), isNull);
     });
 
     testWidgets('WidgetInspector smoke test', (WidgetTester tester) async {
       // This is a smoke test to verify that adding the inspector doesn't crash.
       await tester.pumpWidget(
-        Directionality(
+        const Directionality(
           textDirection: TextDirection.ltr,
           child: Stack(
-            children: const <Widget>[
+            children: <Widget>[
               Text('a', textDirection: TextDirection.ltr),
               Text('b', textDirection: TextDirection.ltr),
               Text('c', textDirection: TextDirection.ltr),
@@ -260,12 +315,12 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
       );
 
       await tester.pumpWidget(
-        Directionality(
+        const Directionality(
           textDirection: TextDirection.ltr,
           child: WidgetInspector(
             selectButtonBuilder: null,
             child: Stack(
-              children: const <Widget>[
+              children: <Widget>[
                 Text('a', textDirection: TextDirection.ltr),
                 Text('b', textDirection: TextDirection.ltr),
                 Text('c', textDirection: TextDirection.ltr),
@@ -365,8 +420,8 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
             selectButtonBuilder: null,
             child: Transform(
               transform: Matrix4.identity()..scale(0.0),
-              child: Stack(
-                children: const <Widget>[
+              child: const Stack(
+                children: <Widget>[
                   Text('a', textDirection: TextDirection.ltr),
                   Text('b', textDirection: TextDirection.ltr),
                   Text('c', textDirection: TextDirection.ltr),
@@ -536,7 +591,7 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
       await tester.pumpWidget(
         RepaintBoundary(
           key: repaintBoundaryKey,
-          child: Container(
+          child: ColoredBox(
             color: Colors.grey,
             child: Transform(
               transform: mainTransform,
@@ -544,7 +599,7 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
                 textDirection: TextDirection.ltr,
                 child: WidgetInspector(
                   selectButtonBuilder: null,
-                  child: Container(
+                  child: ColoredBox(
                     color: Colors.white,
                     child: Center(
                       child: Container(
@@ -729,10 +784,10 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
 
     testWidgets('WidgetInspectorService maybeSetSelection', (WidgetTester tester) async {
       await tester.pumpWidget(
-        Directionality(
+        const Directionality(
           textDirection: TextDirection.ltr,
           child: Stack(
-            children: const <Widget>[
+            children: <Widget>[
               Text('a', textDirection: TextDirection.ltr),
               Text('b', textDirection: TextDirection.ltr),
               Text('c', textDirection: TextDirection.ltr),
@@ -776,10 +831,10 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
 
     testWidgets('WidgetInspectorService defunct selection regression test', (WidgetTester tester) async {
       await tester.pumpWidget(
-        Directionality(
+        const Directionality(
           textDirection: TextDirection.ltr,
           child: Stack(
-            children: const <Widget>[
+            children: <Widget>[
               Text('a', textDirection: TextDirection.ltr),
             ],
           ),
@@ -831,10 +886,10 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
       const String group = 'test-group';
 
       await tester.pumpWidget(
-        Directionality(
+        const Directionality(
           textDirection: TextDirection.ltr,
           child: Stack(
-            children: const <Widget>[
+            children: <Widget>[
               Text('a', textDirection: TextDirection.ltr),
               Text('b', textDirection: TextDirection.ltr),
               Text('c', textDirection: TextDirection.ltr),
@@ -851,7 +906,7 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
       final List<Object?> chainElements = jsonList! as List<Object?>;
       final List<Element> expectedChain = elementB.debugGetDiagnosticChain().reversed.toList();
       // Sanity check that the chain goes back to the root.
-      expect(expectedChain.first, tester.binding.renderViewElement);
+      expect(expectedChain.first, tester.binding.rootElement);
 
       expect(chainElements.length, equals(expectedChain.length));
       for (int i = 0; i < expectedChain.length; i += 1) {
@@ -861,7 +916,6 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
         expect(chainNode['node'], isMap);
         final Map<String, Object?> jsonNode = chainNode['node']! as Map<String, Object?>;
         expect(service.toObject(jsonNode['valueId']! as String), equals(element));
-        expect(service.toObject(jsonNode['objectId']! as String), isA<DiagnosticsNode>());
 
         expect(chainNode['children'], isList);
         final List<Object?> jsonChildren = chainNode['children']! as List<Object?>;
@@ -877,24 +931,22 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
           expect(jsonChildren[j], isMap);
           final Map<String, Object?> childJson = jsonChildren[j]! as Map<String, Object?>;
           expect(service.toObject(childJson['valueId']! as String), equals(childrenElements[j]));
-          expect(service.toObject(childJson['objectId']! as String), isA<DiagnosticsNode>());
         }
       }
     });
 
     test('WidgetInspectorService getProperties', () {
-      final DiagnosticsNode diagnostic = const Text('a', textDirection: TextDirection.ltr).toDiagnosticsNode();
+      const Diagnosticable diagnosticable = Text('a', textDirection: TextDirection.ltr);
       const String group = 'group';
       service.disposeAllGroups();
-      final String id = service.toId(diagnostic, group)!;
+      final String id = service.toId(diagnosticable, group)!;
       final List<Object?> propertiesJson = json.decode(service.getProperties(id, group)) as List<Object?>;
-      final List<DiagnosticsNode> properties = diagnostic.getProperties();
+      final List<DiagnosticsNode> properties = diagnosticable.toDiagnosticsNode().getProperties();
       expect(properties, isNotEmpty);
       expect(propertiesJson.length, equals(properties.length));
       for (int i = 0; i < propertiesJson.length; ++i) {
         final Map<String, Object?> propertyJson = propertiesJson[i]! as Map<String, Object?>;
         expect(service.toObject(propertyJson['valueId'] as String?), equals(properties[i].value));
-        expect(service.toObject(propertyJson['objectId']! as String), isA<DiagnosticsNode>());
       }
     });
 
@@ -902,10 +954,10 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
       const String group = 'test-group';
 
       await tester.pumpWidget(
-        Directionality(
+        const Directionality(
           textDirection: TextDirection.ltr,
           child: Stack(
-            children: const <Widget>[
+            children: <Widget>[
               Text('a', textDirection: TextDirection.ltr),
               Text('b', textDirection: TextDirection.ltr),
               Text('c', textDirection: TextDirection.ltr),
@@ -923,7 +975,6 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
       for (int i = 0; i < propertiesJson.length; ++i) {
         final Map<String, Object?> propertyJson = propertiesJson[i]! as Map<String, Object?>;
         expect(service.toObject(propertyJson['valueId']! as String), equals(children[i].value));
-        expect(service.toObject(propertyJson['objectId']! as String), isA<DiagnosticsNode>());
       }
     });
 
@@ -932,16 +983,17 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
         Directionality(
           textDirection: TextDirection.ltr,
           child: Stack(
-            children: const <Widget>[
-              Text('a'),
-              Text('b', textDirection: TextDirection.ltr),
-              Text('c', textDirection: TextDirection.ltr),
+            children: <Widget>[
+              const Text('a'),
+              const Text('b', textDirection: TextDirection.ltr),
+              'c'.text(),
             ],
           ),
         ),
       );
       final Element elementA = find.text('a').evaluate().first;
       final Element elementB = find.text('b').evaluate().first;
+      final Element elementC = find.text('c').evaluate().first;
 
       service.disposeAllGroups();
       service.resetPubRootDirectories();
@@ -964,23 +1016,178 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
       final int columnB = creationLocationB['column']! as int;
       final String? nameB = creationLocationB['name'] as String?;
       expect(nameB, equals('Text'));
+
+      service.setSelection(elementC, 'my-group');
+      final Map<String, Object?> jsonC = json.decode(service.getSelectedWidget(null, 'my-group')) as Map<String, Object?>;
+      final Map<String, Object?> creationLocationC = jsonC['creationLocation']! as Map<String, Object?>;
+      expect(creationLocationC, isNotNull);
+      final String fileC = creationLocationC['file']! as String;
+      final int lineC = creationLocationC['line']! as int;
+      final int columnC = creationLocationC['column']! as int;
+      final String? nameC = creationLocationC['name'] as String?;
+      expect(nameC, equals('TextFromString|text'));
+
       expect(fileA, endsWith('widget_inspector_test.dart'));
       expect(fileA, equals(fileB));
+      expect(fileA, equals(fileC));
       // We don't hardcode the actual lines the widgets are created on as that
       // would make this test fragile.
       expect(lineA + 1, equals(lineB));
+      expect(lineB + 1, equals(lineC));
       // Column numbers are more stable than line numbers.
-      expect(columnA, equals(15));
+      expect(columnA, equals(21));
       expect(columnA, equals(columnB));
+      expect(columnC, equals(19));
     }, skip: !WidgetInspectorService.instance.isWidgetCreationTracked()); // [intended] Test requires --track-widget-creation flag.
+
+  testWidgets('WidgetInspectorService setSelection notifiers for an Element',
+    (WidgetTester tester) async {
+      await tester.pumpWidget(
+        const Directionality(
+          textDirection: TextDirection.ltr,
+          child: Stack(
+            children: <Widget>[
+              Text('a'),
+              Text('b', textDirection: TextDirection.ltr),
+              Text('c', textDirection: TextDirection.ltr),
+            ],
+          ),
+        ),
+      );
+      final Element elementA = find.text('a').evaluate().first;
+
+      service.disposeAllGroups();
+
+      setupDefaultPubRootDirectory(service);
+
+      // Select the widget
+      service.setSelection(elementA, 'my-group');
+
+      // ensure that developer.inspect was called on the widget
+      final List<Object?> objectsInspected = service.inspectedObjects();
+      expect(objectsInspected, equals(<Element>[elementA]));
+
+      // ensure that a navigate event was sent for the element
+      final List<Map<Object, Object?>> navigateEventsPosted
+        = service.dispatchedEvents('navigate', stream: 'ToolEvent',);
+      expect(navigateEventsPosted.length, equals(1));
+      final Map<Object,Object?> event = navigateEventsPosted[0];
+      final String file = event['fileUri']! as String;
+      final int line = event['line']! as int;
+      final int column = event['column']! as int;
+      expect(file, endsWith('widget_inspector_test.dart'));
+      // We don't hardcode the actual lines the widgets are created on as that
+      // would make this test fragile.
+      expect(line, isNotNull);
+      // Column numbers are more stable than line numbers.
+      expect(column, equals(15));
+    },
+      skip: !WidgetInspectorService.instance.isWidgetCreationTracked(), // [intended] Test requires --track-widget-creation flag.
+    );
+
+    testWidgets(
+      'WidgetInspectorService setSelection notifiers for a RenderObject',
+      (WidgetTester tester) async {
+        await tester.pumpWidget(
+          const Directionality(
+            textDirection: TextDirection.ltr,
+            child: Stack(
+              children: <Widget>[
+                Text('a'),
+                Text('b', textDirection: TextDirection.ltr),
+                Text('c', textDirection: TextDirection.ltr),
+              ],
+            ),
+          ),
+        );
+        final Element elementA = find.text('a').evaluate().first;
+
+        service.disposeAllGroups();
+
+        setupDefaultPubRootDirectory(service);
+
+        // Select the render object for the widget.
+        service.setSelection(elementA.renderObject, 'my-group');
+
+        // ensure that developer.inspect was called on the widget
+        final List<Object?> objectsInspected = service.inspectedObjects();
+        expect(objectsInspected, equals(<RenderObject?>[elementA.renderObject]));
+
+        // ensure that a navigate event was sent for the renderObject
+        final List<Map<Object, Object?>> navigateEventsPosted
+          = service.dispatchedEvents('navigate', stream: 'ToolEvent',);
+        expect(navigateEventsPosted.length, equals(1));
+        final Map<Object,Object?> event = navigateEventsPosted[0];
+        final String file = event['fileUri']! as String;
+        final int line = event['line']! as int;
+        final int column = event['column']! as int;
+        expect(file, endsWith('widget_inspector_test.dart'));
+        // We don't hardcode the actual lines the widgets are created on as that
+        // would make this test fragile.
+        expect(line, isNotNull);
+        // Column numbers are more stable than line numbers.
+        expect(column, equals(17));
+      },
+      skip: !WidgetInspectorService.instance.isWidgetCreationTracked(), // [intended] Test requires --track-widget-creation flag.
+    );
+
+    testWidgets(
+      'WidgetInspector selectButton inspection for tap',
+      (WidgetTester tester) async {
+        final GlobalKey selectButtonKey = GlobalKey();
+        final GlobalKey inspectorKey = GlobalKey();
+        setupDefaultPubRootDirectory(service);
+
+        Widget selectButtonBuilder(BuildContext context, VoidCallback onPressed) {
+          return Material(child: ElevatedButton(onPressed: onPressed, key: selectButtonKey, child: null));
+        }
+
+        await tester.pumpWidget(
+          Directionality(
+            textDirection: TextDirection.ltr,
+            child: WidgetInspector(
+              key: inspectorKey,
+              selectButtonBuilder: selectButtonBuilder,
+              child: const Text('Child 1'),
+            ),
+          ),
+        );
+        final Finder child = find.text('Child 1');
+        final Element childElement = child.evaluate().first;
+
+        await tester.tap(child, warnIfMissed: false);
+
+        await tester.pump();
+
+        // ensure that developer.inspect was called on the widget
+        final List<Object?> objectsInspected = service.inspectedObjects();
+        expect(objectsInspected, equals(<RenderObject?>[childElement.renderObject]));
+
+        // ensure that a navigate event was sent for the renderObject
+        final List<Map<Object, Object?>> navigateEventsPosted
+          = service.dispatchedEvents('navigate', stream: 'ToolEvent',);
+        expect(navigateEventsPosted.length, equals(1));
+        final Map<Object,Object?> event = navigateEventsPosted[0];
+        final String file = event['fileUri']! as String;
+        final int line = event['line']! as int;
+        final int column = event['column']! as int;
+        expect(file, endsWith('widget_inspector_test.dart'));
+        // We don't hardcode the actual lines the widgets are created on as that
+        // would make this test fragile.
+        expect(line, isNotNull);
+        // Column numbers are more stable than line numbers.
+        expect(column, equals(28));
+      },
+      skip: !WidgetInspectorService.instance.isWidgetCreationTracked() // [intended] Test requires --track-widget-creation flag.
+    );
 
     testWidgets('test transformDebugCreator will re-order if after stack trace', (WidgetTester tester) async {
       final bool widgetTracked = WidgetInspectorService.instance.isWidgetCreationTracked();
       await tester.pumpWidget(
-        Directionality(
+        const Directionality(
           textDirection: TextDirection.ltr,
           child: Stack(
-            children: const <Widget>[
+            children: <Widget>[
               Text('a'),
               Text('b', textDirection: TextDirection.ltr),
               Text('c', textDirection: TextDirection.ltr),
@@ -1041,10 +1248,10 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
     testWidgets('test transformDebugCreator will not re-order if before stack trace', (WidgetTester tester) async {
       final bool widgetTracked = WidgetInspectorService.instance.isWidgetCreationTracked();
       await tester.pumpWidget(
-        Directionality(
+        const Directionality(
           textDirection: TextDirection.ltr,
           child: Stack(
-            children: const <Widget>[
+            children: <Widget>[
               Text('a'),
               Text('b', textDirection: TextDirection.ltr),
               Text('c', textDirection: TextDirection.ltr),
@@ -1108,10 +1315,10 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
       setupDefaultPubRootDirectory(service);
 
       await tester.pumpWidget(
-        Directionality(
+        const Directionality(
           textDirection: TextDirection.ltr,
           child: Stack(
-            children: const <Widget>[
+            children: <Widget>[
               Text('a'),
               Text('b', textDirection: TextDirection.ltr),
               Text('c', textDirection: TextDirection.ltr),
@@ -1142,10 +1349,10 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
       setupDefaultPubRootDirectory(service);
 
       await tester.pumpWidget(
-        Directionality(
+        const Directionality(
           textDirection: TextDirection.ltr,
           child: Stack(
-            children: const <Widget>[
+            children: <Widget>[
               Text('a'),
               Text('b', textDirection: TextDirection.ltr),
               Text('c', textDirection: TextDirection.ltr),
@@ -1174,10 +1381,10 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
       setupDefaultPubRootDirectory(service);
 
       await tester.pumpWidget(
-        Directionality(
+        const Directionality(
           textDirection: TextDirection.ltr,
           child: Stack(
-            children: const <Widget>[
+            children: <Widget>[
               Text('a'),
               Text('b', textDirection: TextDirection.ltr),
               Text('c', textDirection: TextDirection.ltr),
@@ -1219,7 +1426,7 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
           expect(pubRoots, unorderedEquals(directories));
         });
 
-        test('can add multiple directories seperately', () async {
+        test('can add multiple directories separately', () async {
           service.addPubRootDirectories(<String>[directoryA]);
           service.addPubRootDirectories(<String>[directoryB]);
           service.addPubRootDirectories(<String>[]);
@@ -1261,7 +1468,7 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
           expect(pubRoots, equals(<String>[directoryC]));
         });
 
-        test('removes multiple directories seperately', () async {
+        test('removes multiple directories separately', () async {
           service.removePubRootDirectories(<String>[directoryA]);
           service.removePubRootDirectories(<String>[directoryB]);
           service.removePubRootDirectories(<String>[]);
@@ -1313,10 +1520,10 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
           testWidgets(
             'does not have createdByLocalProject when there are no pubRootDirectories',
             (WidgetTester tester) async {
-              final Widget widget = Directionality(
+              const Widget widget = Directionality(
                 textDirection: TextDirection.ltr,
                 child: Stack(
-                  children: const <Widget>[
+                  children: <Widget>[
                     Text('a'),
                     Text('b', textDirection: TextDirection.ltr),
                     Text('c', textDirection: TextDirection.ltr),
@@ -1343,10 +1550,10 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
           testWidgets(
             'has createdByLocalProject when the element is part of the pubRootDirectory',
             (WidgetTester tester) async {
-              final Widget widget = Directionality(
+              const Widget widget = Directionality(
                 textDirection: TextDirection.ltr,
                 child: Stack(
-                  children: const <Widget>[
+                  children: <Widget>[
                     Text('a'),
                     Text('b', textDirection: TextDirection.ltr),
                     Text('c', textDirection: TextDirection.ltr),
@@ -1369,10 +1576,10 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
           testWidgets(
             'does not have createdByLocalProject when widget package directory is a suffix of a pubRootDirectory',
             (WidgetTester tester) async {
-              final Widget widget = Directionality(
+              const Widget widget = Directionality(
                 textDirection: TextDirection.ltr,
                 child: Stack(
-                  children: const <Widget>[
+                  children: <Widget>[
                     Text('a'),
                     Text('b', textDirection: TextDirection.ltr),
                     Text('c', textDirection: TextDirection.ltr),
@@ -1394,10 +1601,10 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
           testWidgets(
             'has createdByLocalProject when the pubRootDirectory is prefixed with file://',
             (WidgetTester tester) async {
-              final Widget widget = Directionality(
+              const Widget widget = Directionality(
                 textDirection: TextDirection.ltr,
                 child: Stack(
-                  children: const <Widget>[
+                  children: <Widget>[
                     Text('a'),
                     Text('b', textDirection: TextDirection.ltr),
                     Text('c', textDirection: TextDirection.ltr),
@@ -1417,12 +1624,12 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
           );
 
           testWidgets(
-            'does not have createdByLocalProject when thePubRootDirecty has a different suffix',
+            'does not have createdByLocalProject when thePubRootDirectory has a different suffix',
             (WidgetTester tester) async {
-              final Widget widget = Directionality(
+              const Widget widget = Directionality(
                 textDirection: TextDirection.ltr,
                 child: Stack(
-                  children: const <Widget>[
+                  children: <Widget>[
                     Text('a'),
                     Text('b', textDirection: TextDirection.ltr),
                     Text('c', textDirection: TextDirection.ltr),
@@ -1444,10 +1651,10 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
           testWidgets(
             'has createdByLocalProject even if another pubRootDirectory does not match',
             (WidgetTester tester) async {
-              final Widget widget = Directionality(
+              const Widget widget = Directionality(
                 textDirection: TextDirection.ltr,
                 child: Stack(
-                  children: const <Widget>[
+                  children: <Widget>[
                     Text('a'),
                     Text('b', textDirection: TextDirection.ltr),
                     Text('c', textDirection: TextDirection.ltr),
@@ -1472,10 +1679,10 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
           testWidgets(
             'widget is part of core framework and is the child of a widget in the package pubRootDirectories',
             (WidgetTester tester) async {
-              final Widget widget = Directionality(
+              const Widget widget = Directionality(
                 textDirection: TextDirection.ltr,
                 child: Stack(
-                  children: const <Widget>[
+                  children: <Widget>[
                     Text('a'),
                     Text('b', textDirection: TextDirection.ltr),
                     Text('c', textDirection: TextDirection.ltr),
@@ -1549,10 +1756,10 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
         testWidgets(
           'reacts to add and removing pubRootDirectories',
           (WidgetTester tester) async {
-            final Widget widget = Directionality(
+            const Widget widget = Directionality(
               textDirection: TextDirection.ltr,
               child: Stack(
-                children: const <Widget>[
+                children: <Widget>[
                   Text('a'),
                   Text('b', textDirection: TextDirection.ltr),
                   Text('c', textDirection: TextDirection.ltr),
@@ -1587,10 +1794,10 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
         testWidgets(
           'does not match when the package directory does not match',
           (WidgetTester tester) async {
-            final Widget widget = Directionality(
+            const Widget widget = Directionality(
               textDirection: TextDirection.ltr,
               child: Stack(
-                children: const <Widget>[
+                children: <Widget>[
                   Text('a'),
                   Text('b', textDirection: TextDirection.ltr),
                   Text('c', textDirection: TextDirection.ltr),
@@ -1615,10 +1822,10 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
         testWidgets(
           'has createdByLocalProject when the pubRootDirectory is prefixed with file://',
           (WidgetTester tester) async {
-            final Widget widget = Directionality(
+            const Widget widget = Directionality(
               textDirection: TextDirection.ltr,
               child: Stack(
-                children: const <Widget>[
+                children: <Widget>[
                   Text('a'),
                   Text('b', textDirection: TextDirection.ltr),
                   Text('c', textDirection: TextDirection.ltr),
@@ -1640,10 +1847,10 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
         testWidgets(
           'can handle consecutive calls to add',
           (WidgetTester tester) async {
-            final Widget widget = Directionality(
+            const Widget widget = Directionality(
               textDirection: TextDirection.ltr,
               child: Stack(
-                children: const <Widget>[
+                children: <Widget>[
                   Text('a'),
                   Text('b', textDirection: TextDirection.ltr),
                   Text('c', textDirection: TextDirection.ltr),
@@ -1669,10 +1876,10 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
         testWidgets(
           'can handle removing an unrelated pubRootDirectory',
           (WidgetTester tester) async {
-            final Widget widget = Directionality(
+            const Widget widget = Directionality(
               textDirection: TextDirection.ltr,
               child: Stack(
-                children: const <Widget>[
+                children: <Widget>[
                   Text('a'),
                   Text('b', textDirection: TextDirection.ltr),
                   Text('c', textDirection: TextDirection.ltr),
@@ -1705,10 +1912,10 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
         testWidgets(
           'can handle parent widget being part of a separate package',
           (WidgetTester tester) async {
-            final Widget widget = Directionality(
+            const Widget widget = Directionality(
               textDirection: TextDirection.ltr,
               child: Stack(
-                children: const <Widget>[
+                children: <Widget>[
                   Text('a'),
                   Text('b', textDirection: TextDirection.ltr),
                   Text('c', textDirection: TextDirection.ltr),
@@ -1829,10 +2036,10 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
 
     testWidgets('ext.flutter.inspector.setSelection', (WidgetTester tester) async {
       await tester.pumpWidget(
-        Directionality(
+        const Directionality(
           textDirection: TextDirection.ltr,
           child: Stack(
-            children: const <Widget>[
+            children: <Widget>[
               Text('a', textDirection: TextDirection.ltr),
               Text('b', textDirection: TextDirection.ltr),
               Text('c', textDirection: TextDirection.ltr),
@@ -1881,10 +2088,10 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
       const String group = 'test-group';
 
       await tester.pumpWidget(
-        Directionality(
+        const Directionality(
           textDirection: TextDirection.ltr,
           child: Stack(
-            children: const <Widget>[
+            children: <Widget>[
               Text('a', textDirection: TextDirection.ltr),
               Text('b', textDirection: TextDirection.ltr),
               Text('c', textDirection: TextDirection.ltr),
@@ -1903,7 +2110,7 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
       final List<Object?> chainElements = jsonList! as List<Object?>;
       final List<Element> expectedChain = elementB.debugGetDiagnosticChain().reversed.toList();
       // Sanity check that the chain goes back to the root.
-      expect(expectedChain.first, tester.binding.renderViewElement);
+      expect(expectedChain.first, tester.binding.rootElement);
 
       expect(chainElements.length, equals(expectedChain.length));
       for (int i = 0; i < expectedChain.length; i += 1) {
@@ -1913,7 +2120,6 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
         expect(chainNode['node'], isMap);
         final Map<String, Object?> jsonNode = chainNode['node']! as Map<String, Object?>;
         expect(service.toObject(jsonNode['valueId']! as String), equals(element));
-        expect(service.toObject(jsonNode['objectId']! as String), isA<DiagnosticsNode>());
 
         expect(chainNode['children'], isList);
         final List<Object?> jsonChildren = chainNode['children']! as List<Object?>;
@@ -1929,26 +2135,24 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
           expect(jsonChildren[j], isMap);
           final Map<String, Object?> childJson = jsonChildren[j]! as Map<String, Object?>;
           expect(service.toObject(childJson['valueId']! as String), equals(childrenElements[j]));
-          expect(service.toObject(childJson['objectId']! as String), isA<DiagnosticsNode>());
         }
       }
     });
 
     test('ext.flutter.inspector.getProperties', () async {
-      final DiagnosticsNode diagnostic = const Text('a', textDirection: TextDirection.ltr).toDiagnosticsNode();
+      const Diagnosticable diagnosticable = Text('a', textDirection: TextDirection.ltr);
       const String group = 'group';
-      final String id = service.toId(diagnostic, group)!;
+      final String id = service.toId(diagnosticable, group)!;
       final List<Object?> propertiesJson = (await service.testExtension(
         WidgetInspectorServiceExtensions.getProperties.name,
         <String, String>{'arg': id, 'objectGroup': group},
       ))! as List<Object?>;
-      final List<DiagnosticsNode> properties = diagnostic.getProperties();
+      final List<DiagnosticsNode> properties = diagnosticable.toDiagnosticsNode().getProperties();
       expect(properties, isNotEmpty);
       expect(propertiesJson.length, equals(properties.length));
       for (int i = 0; i < propertiesJson.length; ++i) {
         final Map<String, Object?> propertyJson = propertiesJson[i]! as Map<String, Object?>;
         expect(service.toObject(propertyJson['valueId'] as String?), equals(properties[i].value));
-        expect(service.toObject(propertyJson['objectId']! as String), isA<DiagnosticsNode>());
       }
     });
 
@@ -1956,10 +2160,10 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
       const String group = 'test-group';
 
       await tester.pumpWidget(
-        Directionality(
+        const Directionality(
           textDirection: TextDirection.ltr,
           child: Stack(
-            children: const <Widget>[
+            children: <Widget>[
               Text('a', textDirection: TextDirection.ltr),
               Text('b', textDirection: TextDirection.ltr),
               Text('c', textDirection: TextDirection.ltr),
@@ -1979,7 +2183,6 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
       for (int i = 0; i < propertiesJson.length; ++i) {
         final Map<String, Object?> propertyJson = propertiesJson[i]! as Map<String, Object?>;
         expect(service.toObject(propertyJson['valueId']! as String), equals(children[i].value));
-        expect(service.toObject(propertyJson['objectId']! as String), isA<DiagnosticsNode>());
       }
     });
 
@@ -1987,10 +2190,10 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
       const String group = 'test-group';
 
       await tester.pumpWidget(
-        Directionality(
+        const Directionality(
           textDirection: TextDirection.ltr,
           child: Stack(
-            children: const <Widget>[
+            children: <Widget>[
               Text('a', textDirection: TextDirection.ltr),
               Text('b', textDirection: TextDirection.ltr),
               Text('c', textDirection: TextDirection.ltr),
@@ -1998,26 +2201,26 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
           ),
         ),
       );
-      final DiagnosticsNode diagnostic = find.byType(Stack).evaluate().first.toDiagnosticsNode();
-      final String id = service.toId(diagnostic, group)!;
+      final Diagnosticable diagnosticable = find.byType(Stack).evaluate().first;
+      final String id = service.toId(diagnosticable, group)!;
       final List<Object?> childrenJson = (await service.testExtension(
         WidgetInspectorServiceExtensions.getChildrenDetailsSubtree.name,
         <String, String>{'arg': id, 'objectGroup': group},
       ))! as List<Object?>;
-      final List<DiagnosticsNode> children = diagnostic.getChildren();
+      final List<DiagnosticsNode> children = diagnosticable.toDiagnosticsNode().getChildren();
       expect(children.length, equals(3));
       expect(childrenJson.length, equals(children.length));
       for (int i = 0; i < childrenJson.length; ++i) {
         final Map<String, Object?> childJson = childrenJson[i]! as Map<String, Object?>;
         expect(service.toObject(childJson['valueId']! as String), equals(children[i].value));
-        expect(service.toObject(childJson['objectId']! as String), isA<DiagnosticsNode>());
         final List<Object?> propertiesJson = childJson['properties']! as List<Object?>;
-        final DiagnosticsNode diagnosticsNode = service.toObject(childJson['objectId']! as String)! as DiagnosticsNode;
-        final List<DiagnosticsNode> expectedProperties = diagnosticsNode.getProperties();
+        final Element element = service.toObject(childJson['valueId']! as String)! as Element;
+        final List<DiagnosticsNode> expectedProperties = element.toDiagnosticsNode().getProperties();
+        final Iterable<Object?> propertyValues = expectedProperties.map((DiagnosticsNode e) => e.value.toString());
         for (final Map<String, Object?> propertyJson in propertiesJson.cast<Map<String, Object?>>()) {
-          final Object? property = service.toObject(propertyJson['objectId']! as String);
-          expect(property, isA<DiagnosticsNode>());
-          expect(expectedProperties, contains(property));
+          final String id = propertyJson['valueId']! as String;
+          final  String property = service.toObject(id)!.toString();
+          expect(propertyValues, contains(property));
         }
       }
     });
@@ -2026,10 +2229,10 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
       const String group = 'test-group';
 
       await tester.pumpWidget(
-        Directionality(
+        const Directionality(
           textDirection: TextDirection.ltr,
           child: Stack(
-            children: const <Widget>[
+            children: <Widget>[
               Text('a', textDirection: TextDirection.ltr),
               Text('b', textDirection: TextDirection.ltr),
               Text('c', textDirection: TextDirection.ltr),
@@ -2037,31 +2240,31 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
           ),
         ),
       );
-      final DiagnosticsNode diagnostic = find.byType(Stack).evaluate().first.toDiagnosticsNode();
-      final String id = service.toId(diagnostic, group)!;
+      final Diagnosticable diagnosticable = find.byType(Stack).evaluate().first;
+      final String id = service.toId(diagnosticable, group)!;
       final Map<String, Object?> subtreeJson = (await service.testExtension(
         WidgetInspectorServiceExtensions.getDetailsSubtree.name,
         <String, String>{'arg': id, 'objectGroup': group},
       ))! as Map<String, Object?>;
-      expect(subtreeJson['objectId'], equals(id));
+      expect(subtreeJson['valueId'], equals(id));
       final List<Object?> childrenJson = subtreeJson['children']! as List<Object?>;
-      final List<DiagnosticsNode> children = diagnostic.getChildren();
+      final List<DiagnosticsNode> children = diagnosticable.toDiagnosticsNode().getChildren();
       expect(children.length, equals(3));
       expect(childrenJson.length, equals(children.length));
       for (int i = 0; i < childrenJson.length; ++i) {
         final Map<String, Object?> childJson = childrenJson[i]! as Map<String, Object?>;
         expect(service.toObject(childJson['valueId']! as String), equals(children[i].value));
-        expect(service.toObject(childJson['objectId']! as String), isA<DiagnosticsNode>());
         final List<Object?> propertiesJson = childJson['properties']! as List<Object?>;
         for (final Map<String, Object?> propertyJson in propertiesJson.cast<Map<String, Object?>>()) {
           expect(propertyJson, isNot(contains('children')));
         }
-        final DiagnosticsNode diagnosticsNode = service.toObject(childJson['objectId']! as String)! as DiagnosticsNode;
-        final List<DiagnosticsNode> expectedProperties = diagnosticsNode.getProperties();
+        final Element element = service.toObject(childJson['valueId']! as String)! as Element;
+        final List<DiagnosticsNode> expectedProperties = element.toDiagnosticsNode().getProperties();
+        final Iterable<Object?> propertyValues = expectedProperties.map((DiagnosticsNode e) => e.value.toString());
         for (final Map<String, Object?> propertyJson in propertiesJson.cast<Map<String, Object?>>()) {
-          final Object property = service.toObject(propertyJson['objectId']! as String)!;
-          expect(property, isA<DiagnosticsNode>());
-          expect(expectedProperties, contains(property));
+          final String id = propertyJson['valueId']! as String;
+          final String property = service.toObject(id)!.toString();
+          expect(propertyValues, contains(property));
         }
       }
 
@@ -2086,13 +2289,12 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
       a.children.add(b.toDiagnosticsNode());
       b.related = a;
 
-      final DiagnosticsNode diagnostic = a.toDiagnosticsNode();
-      final String id = service.toId(diagnostic, group)!;
+      final String id = service.toId(a, group)!;
       final Map<String, Object?> subtreeJson = (await service.testExtension(
         WidgetInspectorServiceExtensions.getDetailsSubtree.name,
         <String, String>{'arg': id, 'objectGroup': group},
       ))! as Map<String, Object?>;
-      expect(subtreeJson['objectId'], equals(id));
+      expect(subtreeJson['valueId'], equals(id));
       expect(subtreeJson, contains('children'));
       final List<Object?> propertiesJson = subtreeJson['properties']! as List<Object?>;
       expect(propertiesJson.length, equals(1));
@@ -2117,12 +2319,11 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
 
     testWidgets('ext.flutter.inspector.getRootWidgetSummaryTree', (WidgetTester tester) async {
       const String group = 'test-group';
-
       await tester.pumpWidget(
-        Directionality(
+        const Directionality(
           textDirection: TextDirection.ltr,
           child: Stack(
-            children: const <Widget>[
+            children: <Widget>[
               Text('a', textDirection: TextDirection.ltr),
               Text('b', textDirection: TextDirection.ltr),
               Text('c', textDirection: TextDirection.ltr),
@@ -2130,6 +2331,7 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
           ),
         ),
       );
+
       final Element elementA = find.text('a').evaluate().first;
 
       service.disposeAllGroups();
@@ -2145,11 +2347,12 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
         WidgetInspectorServiceExtensions.getRootWidgetSummaryTree.name,
         <String, String>{'objectGroup': group},
       ))! as Map<String, Object?>;
+
       // We haven't yet properly specified which directories are summary tree
       // directories so we get an empty tree other than the root that is always
       // included.
       final Object? rootWidget = service.toObject(rootJson['valueId']! as String);
-      expect(rootWidget, equals(WidgetsBinding.instance.renderViewElement));
+      expect(rootWidget, equals(WidgetsBinding.instance.rootElement));
       List<Object?> childrenJson = rootJson['children']! as List<Object?>;
       // There are no summary tree children.
       expect(childrenJson.length, equals(0));
@@ -2180,7 +2383,7 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
 
       List<Object?> alternateChildrenJson = (await service.testExtension(
         WidgetInspectorServiceExtensions.getChildrenSummaryTree.name,
-        <String, String>{'arg': rootJson['objectId']! as String, 'objectGroup': group},
+        <String, String>{'arg': rootJson['valueId']! as String, 'objectGroup': group},
       ))! as List<Object?>;
       expect(alternateChildrenJson.length, equals(1));
       Map<String, Object?> childJson = childrenJson[0]! as Map<String, Object?>;
@@ -2192,7 +2395,7 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
       childrenJson = childJson['children']! as List<Object?>;
       alternateChildrenJson = (await service.testExtension(
         WidgetInspectorServiceExtensions.getChildrenSummaryTree.name,
-        <String, String>{'arg': childJson['objectId']! as String, 'objectGroup': group},
+        <String, String>{'arg': childJson['valueId']! as String, 'objectGroup': group},
       ))! as List<Object?>;
       expect(alternateChildrenJson.length, equals(1));
       expect(childrenJson.length, equals(1));
@@ -2206,7 +2409,7 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
       childrenJson = childJson['children']! as List<Object?>;
       alternateChildrenJson = (await service.testExtension(
         WidgetInspectorServiceExtensions.getChildrenSummaryTree.name,
-        <String, String>{'arg': childJson['objectId']! as String, 'objectGroup': group},
+        <String, String>{'arg': childJson['valueId']! as String, 'objectGroup': group},
       ))! as List<Object?>;
       expect(alternateChildrenJson.length, equals(3));
       expect(childrenJson.length, equals(3));
@@ -2217,7 +2420,7 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
       expect(alternateChildJson['valueId'], equals(childJson['valueId']));
       alternateChildrenJson = (await service.testExtension(
         WidgetInspectorServiceExtensions.getChildrenSummaryTree.name,
-        <String, String>{'arg': childJson['objectId']! as String, 'objectGroup': group},
+        <String, String>{'arg': childJson['valueId']! as String, 'objectGroup': group},
       ))! as List<Object?>;
       expect(alternateChildrenJson.length , equals(0));
       // Tests are failing when this typo is fixed.
@@ -2228,10 +2431,10 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
       const String group = 'test-group';
 
       await tester.pumpWidget(
-        Directionality(
+        const Directionality(
           textDirection: TextDirection.ltr,
           child: Stack(
-            children: const <Widget>[
+            children: <Widget>[
               Text('a', textDirection: TextDirection.ltr),
               Text('b', textDirection: TextDirection.ltr),
               Text('c', textDirection: TextDirection.ltr),
@@ -2276,7 +2479,7 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
 
       List<Object?> alternateChildrenJson = (await service.testExtension(
         WidgetInspectorServiceExtensions.getChildrenSummaryTree.name,
-        <String, String>{'arg': rootJson['objectId']! as String, 'objectGroup': group},
+        <String, String>{'arg': rootJson['valueId']! as String, 'objectGroup': group},
       ))! as List<Object?>;
       expect(alternateChildrenJson.length, equals(1));
       Map<String, Object?> childJson = childrenJson[0]! as Map<String, Object?>;
@@ -2288,7 +2491,7 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
       childrenJson = childJson['children']! as List<Object?>;
       alternateChildrenJson = (await service.testExtension(
         WidgetInspectorServiceExtensions.getChildrenSummaryTree.name,
-        <String, String>{'arg': childJson['objectId']! as String, 'objectGroup': group},
+        <String, String>{'arg': childJson['valueId']! as String, 'objectGroup': group},
       ))! as List<Object?>;
       expect(alternateChildrenJson.length, equals(1));
       expect(childrenJson.length, equals(1));
@@ -2302,7 +2505,7 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
       childrenJson = childJson['children']! as List<Object?>;
       alternateChildrenJson = (await service.testExtension(
         WidgetInspectorServiceExtensions.getChildrenSummaryTree.name,
-        <String, String>{'arg': childJson['objectId']! as String, 'objectGroup': group},
+        <String, String>{'arg': childJson['valueId']! as String, 'objectGroup': group},
       ))! as List<Object?>;
       expect(alternateChildrenJson.length, equals(3));
       expect(childrenJson.length, equals(3));
@@ -2319,10 +2522,10 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
       const String group = 'test-group';
 
       await tester.pumpWidget(
-        Directionality(
+        const Directionality(
           textDirection: TextDirection.ltr,
           child: Stack(
-            children: const <Widget>[
+            children: <Widget>[
               Text('a', textDirection: TextDirection.ltr),
               Text('b', textDirection: TextDirection.ltr),
               Text('c', textDirection: TextDirection.ltr),
@@ -2388,10 +2591,10 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
 
     testWidgets('ext.flutter.inspector creationLocation', (WidgetTester tester) async {
       await tester.pumpWidget(
-        Directionality(
+        const Directionality(
           textDirection: TextDirection.ltr,
           child: Stack(
-            children: const <Widget>[
+            children: <Widget>[
               Text('a'),
               Text('b', textDirection: TextDirection.ltr),
               Text('c', textDirection: TextDirection.ltr),
@@ -2452,10 +2655,10 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
           'has createdByLocalProject when the widget is in the pubRootDirectory',
           (WidgetTester tester) async {
             await tester.pumpWidget(
-              Directionality(
+              const Directionality(
                 textDirection: TextDirection.ltr,
                 child: Stack(
-                  children: const <Widget>[
+                  children: <Widget>[
                     Text('a'),
                     Text('b', textDirection: TextDirection.ltr),
                     Text('c', textDirection: TextDirection.ltr),
@@ -2485,10 +2688,10 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
           'does not have createdByLocalProject if the prefix of the pubRootDirectory is different',
           (WidgetTester tester) async {
             await tester.pumpWidget(
-              Directionality(
+              const Directionality(
                 textDirection: TextDirection.ltr,
                 child: Stack(
-                  children: const <Widget>[
+                  children: <Widget>[
                     Text('a'),
                     Text('b', textDirection: TextDirection.ltr),
                     Text('c', textDirection: TextDirection.ltr),
@@ -2518,10 +2721,10 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
           'has createdByLocalProject if the pubRootDirectory is prefixed with file://',
           (WidgetTester tester) async {
             await tester.pumpWidget(
-              Directionality(
+              const Directionality(
                 textDirection: TextDirection.ltr,
                 child: Stack(
-                  children: const <Widget>[
+                  children: <Widget>[
                     Text('a'),
                     Text('b', textDirection: TextDirection.ltr),
                     Text('c', textDirection: TextDirection.ltr),
@@ -2551,10 +2754,10 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
           'does not have createdByLocalProject if the pubRootDirectory has a different suffix',
           (WidgetTester tester) async {
             await tester.pumpWidget(
-              Directionality(
+              const Directionality(
                 textDirection: TextDirection.ltr,
                 child: Stack(
-                  children: const <Widget>[
+                  children: <Widget>[
                     Text('a'),
                     Text('b', textDirection: TextDirection.ltr),
                     Text('c', textDirection: TextDirection.ltr),
@@ -2584,10 +2787,10 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
           'has createdByLocalProject if at least one of the pubRootDirectories matches',
           (WidgetTester tester) async {
             await tester.pumpWidget(
-              Directionality(
+              const Directionality(
                 textDirection: TextDirection.ltr,
                 child: Stack(
-                  children: const <Widget>[
+                  children: <Widget>[
                     Text('a'),
                     Text('b', textDirection: TextDirection.ltr),
                     Text('c', textDirection: TextDirection.ltr),
@@ -2621,10 +2824,10 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
           'widget is part of core framework and is the child of a widget in the package pubRootDirectories',
           (WidgetTester tester) async {
             await tester.pumpWidget(
-              Directionality(
+              const Directionality(
                 textDirection: TextDirection.ltr,
                 child: Stack(
-                  children: const <Widget>[
+                  children: <Widget>[
                     Text('a'),
                     Text('b', textDirection: TextDirection.ltr),
                     Text('c', textDirection: TextDirection.ltr),
@@ -2732,10 +2935,10 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
           'has createdByLocalProject when the widget is in the pubRootDirectory',
           (WidgetTester tester) async {
             await tester.pumpWidget(
-              Directionality(
+              const Directionality(
                 textDirection: TextDirection.ltr,
                 child: Stack(
-                  children: const <Widget>[
+                  children: <Widget>[
                     Text('a'),
                     Text('b', textDirection: TextDirection.ltr),
                       Text('c', textDirection: TextDirection.ltr),
@@ -2764,10 +2967,10 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
           'does not have createdByLocalProject if the prefix of the pubRootDirectory is different',
           (WidgetTester tester) async {
             await tester.pumpWidget(
-              Directionality(
+              const Directionality(
                 textDirection: TextDirection.ltr,
                 child: Stack(
-                  children: const <Widget>[
+                  children: <Widget>[
                     Text('a'),
                     Text('b', textDirection: TextDirection.ltr),
                     Text('c', textDirection: TextDirection.ltr),
@@ -2799,10 +3002,10 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
           'has createdByLocalProject if the pubRootDirectory is prefixed with file://',
           (WidgetTester tester) async {
             await tester.pumpWidget(
-              Directionality(
+              const Directionality(
                 textDirection: TextDirection.ltr,
                 child: Stack(
-                  children: const <Widget>[
+                  children: <Widget>[
                     Text('a'),
                     Text('b', textDirection: TextDirection.ltr),
                     Text('c', textDirection: TextDirection.ltr),
@@ -2831,10 +3034,10 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
           'does not have createdByLocalProject if the pubRootDirectory has a different suffix',
           (WidgetTester tester) async {
             await tester.pumpWidget(
-              Directionality(
+              const Directionality(
                 textDirection: TextDirection.ltr,
                 child: Stack(
-                  children: const <Widget>[
+                  children: <Widget>[
                     Text('a'),
                     Text('b', textDirection: TextDirection.ltr),
                     Text('c', textDirection: TextDirection.ltr),
@@ -2866,10 +3069,10 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
           'has createdByLocalProject if at least one of the pubRootDirectories matches',
           (WidgetTester tester) async {
             await tester.pumpWidget(
-              Directionality(
+              const Directionality(
                 textDirection: TextDirection.ltr,
                 child: Stack(
-                  children: const <Widget>[
+                  children: <Widget>[
                     Text('a'),
                     Text('b', textDirection: TextDirection.ltr),
                     Text('c', textDirection: TextDirection.ltr),
@@ -2923,10 +3126,10 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
       testWidgets(
         'reacts to add and removing pubRootDirectories',
         (WidgetTester tester) async {
-          final Widget widget = Directionality(
+          const Widget widget = Directionality(
             textDirection: TextDirection.ltr,
             child: Stack(
-              children: const <Widget>[
+              children: <Widget>[
                 Text('a'),
                 Text('b', textDirection: TextDirection.ltr),
                 Text('c', textDirection: TextDirection.ltr),
@@ -2973,10 +3176,10 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
       testWidgets(
         'does not match when the package directory does not match',
         (WidgetTester tester) async {
-          final Widget widget = Directionality(
+          const Widget widget = Directionality(
             textDirection: TextDirection.ltr,
             child: Stack(
-              children: const <Widget>[
+              children: <Widget>[
                 Text('a'),
                 Text('b', textDirection: TextDirection.ltr),
                 Text('c', textDirection: TextDirection.ltr),
@@ -3007,10 +3210,10 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
       testWidgets(
         'has createdByLocalProject when the pubRootDirectory is prefixed with file://',
         (WidgetTester tester) async {
-          final Widget widget = Directionality(
+          const Widget widget = Directionality(
             textDirection: TextDirection.ltr,
             child: Stack(
-              children: const <Widget>[
+              children: <Widget>[
                 Text('a'),
                 Text('b', textDirection: TextDirection.ltr),
                 Text('c', textDirection: TextDirection.ltr),
@@ -3038,10 +3241,10 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
       testWidgets(
         'can handle consecutive calls to add',
         (WidgetTester tester) async {
-          final Widget widget = Directionality(
+          const Widget widget = Directionality(
             textDirection: TextDirection.ltr,
             child: Stack(
-              children: const <Widget>[
+              children: <Widget>[
                 Text('a'),
                 Text('b', textDirection: TextDirection.ltr),
                 Text('c', textDirection: TextDirection.ltr),
@@ -3072,10 +3275,10 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
       testWidgets(
         'can handle removing an unrelated pubRootDirectory',
         (WidgetTester tester) async {
-          final Widget widget = Directionality(
+          const Widget widget = Directionality(
             textDirection: TextDirection.ltr,
             child: Stack(
-              children: const <Widget>[
+              children: <Widget>[
                 Text('a'),
                 Text('b', textDirection: TextDirection.ltr),
                 Text('c', textDirection: TextDirection.ltr),
@@ -3118,10 +3321,10 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
       testWidgets(
         'can handle parent widget being part of a separate package',
         (WidgetTester tester) async {
-          final Widget widget = Directionality(
+          const Widget widget = Directionality(
             textDirection: TextDirection.ltr,
             child: Stack(
-              children: const <Widget>[
+              children: <Widget>[
                 Text('a'),
                 Text('b', textDirection: TextDirection.ltr),
                 Text('c', textDirection: TextDirection.ltr),
@@ -3229,10 +3432,10 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
       testWidgets(
         'reacts to add and removing pubRootDirectories',
         (WidgetTester tester) async {
-          final Widget widget = Directionality(
+          const Widget widget = Directionality(
             textDirection: TextDirection.ltr,
             child: Stack(
-              children: const <Widget>[
+              children: <Widget>[
                 Text('a'),
                 Text('b', textDirection: TextDirection.ltr),
                 Text('c', textDirection: TextDirection.ltr),
@@ -3281,10 +3484,10 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
       testWidgets(
         'does not match when the package directory does not match',
         (WidgetTester tester) async {
-          final Widget widget = Directionality(
+          const Widget widget = Directionality(
             textDirection: TextDirection.ltr,
             child: Stack(
-              children: const <Widget>[
+              children: <Widget>[
                 Text('a'),
                 Text('b', textDirection: TextDirection.ltr),
                 Text('c', textDirection: TextDirection.ltr),
@@ -3315,10 +3518,10 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
       testWidgets(
         'has createdByLocalProject when the pubRootDirectory is prefixed with file://',
         (WidgetTester tester) async {
-          final Widget widget = Directionality(
+          const Widget widget = Directionality(
             textDirection: TextDirection.ltr,
             child: Stack(
-              children: const <Widget>[
+              children: <Widget>[
                 Text('a'),
                 Text('b', textDirection: TextDirection.ltr),
                 Text('c', textDirection: TextDirection.ltr),
@@ -3349,10 +3552,10 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
       testWidgets(
         'can handle consecutive calls to add',
         (WidgetTester tester) async {
-          final Widget widget = Directionality(
+          const Widget widget = Directionality(
             textDirection: TextDirection.ltr,
             child: Stack(
-              children: const <Widget>[
+              children: <Widget>[
                 Text('a'),
                 Text('b', textDirection: TextDirection.ltr),
                 Text('c', textDirection: TextDirection.ltr),
@@ -3389,10 +3592,10 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
       testWidgets(
         'can handle removing an unrelated pubRootDirectory',
         (WidgetTester tester) async {
-          final Widget widget = Directionality(
+          const Widget widget = Directionality(
             textDirection: TextDirection.ltr,
             child: Stack(
-              children: const <Widget>[
+              children: <Widget>[
                 Text('a'),
                 Text('b', textDirection: TextDirection.ltr),
                 Text('c', textDirection: TextDirection.ltr),
@@ -3445,6 +3648,28 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
       skip: !WidgetInspectorService.instance.isWidgetCreationTracked(), // [intended] Test requires --track-widget-creation flag.
     );
 
+    testWidgets('ext.flutter.inspector.trackRebuildDirtyWidgets with tear-offs', (WidgetTester tester) async {
+      final Widget widget = Directionality(
+        textDirection: TextDirection.ltr,
+        child: WidgetInspector(
+          selectButtonBuilder: null,
+          child: _applyConstructor(_TrivialWidget.new),
+        ),
+      );
+
+      expect(
+        await service.testBoolExtension(
+          WidgetInspectorServiceExtensions.trackRebuildDirtyWidgets.name,
+          <String, String>{'enabled': 'true'},
+        ),
+        equals('true'),
+      );
+
+      await tester.pumpWidget(widget);
+    },
+      skip: !WidgetInspectorService.instance.isWidgetCreationTracked(), // [intended] Test requires --track-widget-creation flag.
+    );
+
     testWidgets('ext.flutter.inspector.trackRebuildDirtyWidgets', (WidgetTester tester) async {
       service.rebuildCount = 0;
 
@@ -3472,7 +3697,7 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
       );
 
       final List<Map<Object, Object?>> rebuildEvents =
-          service.getEventsDispatched('Flutter.RebuiltWidgets');
+          service.dispatchedEvents('Flutter.RebuiltWidgets');
       expect(rebuildEvents, isEmpty);
 
       expect(service.rebuildCount, equals(0));
@@ -3550,7 +3775,7 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
       _CreationLocation location = knownLocations[id]!;
       expect(location.file, equals(file));
       // ClockText widget.
-      expect(location.line, equals(60));
+      expect(location.line, equals(55));
       expect(location.column, equals(9));
       expect(location.name, equals('ClockText'));
       expect(count, equals(1));
@@ -3560,7 +3785,7 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
       location = knownLocations[id]!;
       expect(location.file, equals(file));
       // Text widget in _ClockTextState build method.
-      expect(location.line, equals(98));
+      expect(location.line, equals(93));
       expect(location.column, equals(12));
       expect(location.name, equals('Text'));
       expect(count, equals(1));
@@ -3587,7 +3812,7 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
       location = knownLocations[id]!;
       expect(location.file, equals(file));
       // ClockText widget.
-      expect(location.line, equals(60));
+      expect(location.line, equals(55));
       expect(location.column, equals(9));
       expect(location.name, equals('ClockText'));
       expect(count, equals(3)); // 3 clock widget instances rebuilt.
@@ -3597,7 +3822,7 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
       location = knownLocations[id]!;
       expect(location.file, equals(file));
       // Text widget in _ClockTextState build method.
-      expect(location.line, equals(98));
+      expect(location.line, equals(93));
       expect(location.column, equals(12));
       expect(location.name, equals('Text'));
       expect(count, equals(3)); // 3 clock widget instances rebuilt.
@@ -3692,7 +3917,7 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
       );
 
       final List<Map<Object, Object?>> repaintEvents =
-          service.getEventsDispatched('Flutter.RepaintWidgets');
+          service.dispatchedEvents('Flutter.RepaintWidgets');
       expect(repaintEvents, isEmpty);
 
       expect(service.rebuildCount, equals(0));
@@ -3862,7 +4087,7 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
       await tester.pumpWidget(
         Center(
           child: RepaintBoundaryWithDebugPaint(
-            child: Container(
+            child: ColoredBox(
               key: outerContainerKey,
               color: Colors.white,
               child: Padding(
@@ -3881,10 +4106,10 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
                         bottomLeft: Radius.elliptical(2.5, 12.0),
                         bottomRight: Radius.elliptical(15.0, 6.0),
                       ),
-                      child: Container(
+                      child: ColoredBox(
                         key: redContainerKey,
                         color: Colors.red,
-                        child: Container(
+                        child: ColoredBox(
                           key: whiteContainerKey,
                           color: Colors.white,
                           child: RepaintBoundary(
@@ -4162,18 +4387,18 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
       });
 
       Future<void> pumpWidgetForLayoutExplorer(WidgetTester tester) async {
-        final Widget widget = Directionality(
+        const Widget widget = Directionality(
           textDirection: TextDirection.ltr,
           child: Center(
             child: Row(
               children: <Widget>[
                 Flexible(
-                  child: Container(
+                  child: ColoredBox(
                     color: Colors.green,
-                    child: const Text('a'),
+                    child: Text('a'),
                   ),
                 ),
-                const Text('b'),
+                Text('b'),
               ],
             ),
           ),
@@ -4187,8 +4412,7 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
         final Element rowElement = tester.element(find.byType(Row));
         service.setSelection(rowElement, group);
 
-        final DiagnosticsNode diagnostic = rowElement.toDiagnosticsNode();
-        final String id = service.toId(diagnostic, group)!;
+        final String id = service.toId(rowElement, group)!;
         final Map<String, Object?> result = (await service.testExtension(
           WidgetInspectorServiceExtensions.getLayoutExplorerNode.name,
           <String, String>{'id': id, 'groupName': group, 'subtreeDepth': '1'},
@@ -4233,8 +4457,7 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
         final Element flexibleElement = tester.element(find.byType(Flexible).first);
         service.setSelection(flexibleElement, group);
 
-        final DiagnosticsNode diagnostic = flexibleElement.toDiagnosticsNode();
-        final String id = service.toId(diagnostic, group)!;
+        final String id = service.toId(flexibleElement, group)!;
         final Map<String, Object?> result = (await service.testExtension(
           WidgetInspectorServiceExtensions.getLayoutExplorerNode.name,
           <String, String>{'id': id, 'groupName': group, 'subtreeDepth': '1'},
@@ -4275,20 +4498,14 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
         await pumpWidgetForLayoutExplorer(tester);
 
         final Element element = tester.element(find.byType(Directionality).first);
-        Element? root;
+        late Element root;
         element.visitAncestorElements((Element ancestor) {
-          if (root == null) {
-            root = ancestor;
-            // Stop traversing ancestors.
-            return false;
-          }
+          root = ancestor;
           return true;
         });
-        expect(root, isNotNull);
         service.setSelection(root, group);
 
-        final DiagnosticsNode diagnostic = root!.toDiagnosticsNode();
-        final String id = service.toId(diagnostic, group)!;
+        final String id = service.toId(root, group)!;
         final Map<String, Object?> result = (await service.testExtension(
           WidgetInspectorServiceExtensions.getLayoutExplorerNode.name,
           <String, String>{'id': id, 'groupName': group, 'subtreeDepth': '1'},
@@ -4319,8 +4536,7 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
         final Element childElement = tester.element(find.byType(Flexible).first);
         service.setSelection(childElement, group);
 
-        final DiagnosticsNode diagnostic = childElement.toDiagnosticsNode();
-        final String id = service.toId(diagnostic, group)!;
+        final String id = service.toId(childElement, group)!;
         Map<String, Object?> result = (await service.testExtension(
           WidgetInspectorServiceExtensions.getLayoutExplorerNode.name,
           <String, String>{'id': id, 'groupName': group, 'subtreeDepth': '1'},
@@ -4350,8 +4566,7 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
         final Element childElement = tester.element(find.byType(Flexible).first);
         service.setSelection(childElement, group);
 
-        final DiagnosticsNode diagnostic = childElement.toDiagnosticsNode();
-        final String id = service.toId(diagnostic, group)!;
+        final String id = service.toId(childElement, group)!;
         Map<String, Object?> result = (await service.testExtension(
           WidgetInspectorServiceExtensions.getLayoutExplorerNode.name,
           <String, String>{'id': id, 'groupName': group, 'subtreeDepth': '1'},
@@ -4381,8 +4596,7 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
         final Element rowElement = tester.element(find.byType(Row).first);
         service.setSelection(rowElement, group);
 
-        final DiagnosticsNode diagnostic = rowElement.toDiagnosticsNode();
-        final String id = service.toId(diagnostic, group)!;
+        final String id = service.toId(rowElement, group)!;
         Map<String, Object?> result = (await service.testExtension(
           WidgetInspectorServiceExtensions.getLayoutExplorerNode.name,
           <String, String>{'id': id, 'groupName': group, 'subtreeDepth': '1'},
@@ -4471,7 +4685,7 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
     });
 
     test('ext.flutter.inspector.structuredErrors', () async {
-      List<Map<Object, Object?>> flutterErrorEvents = service.getEventsDispatched('Flutter.Error');
+      List<Map<Object, Object?>> flutterErrorEvents = service.dispatchedEvents('Flutter.Error');
       expect(flutterErrorEvents, isEmpty);
 
       final FlutterExceptionHandler oldHandler = FlutterError.presentError;
@@ -4494,7 +4708,7 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
         ));
 
         // Validate that we received an error.
-        flutterErrorEvents = service.getEventsDispatched('Flutter.Error');
+        flutterErrorEvents = service.dispatchedEvents('Flutter.Error');
         expect(flutterErrorEvents, hasLength(1));
 
         // Validate the error contents.
@@ -4517,7 +4731,7 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
         ));
 
         // Validate that the error count increased.
-        flutterErrorEvents = service.getEventsDispatched('Flutter.Error');
+        flutterErrorEvents = service.dispatchedEvents('Flutter.Error');
         expect(flutterErrorEvents, hasLength(2));
         error = flutterErrorEvents.last;
         expect(error['errorsSinceReload'], 1);
@@ -4545,7 +4759,7 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
         ));
 
         // And, validate that the error count has been reset.
-        flutterErrorEvents = service.getEventsDispatched('Flutter.Error');
+        flutterErrorEvents = service.dispatchedEvents('Flutter.Error');
         expect(flutterErrorEvents, hasLength(3));
         error = flutterErrorEvents.last;
         expect(error['errorsSinceReload'], 0);
@@ -4794,7 +5008,7 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
       final List<Object?> childrenOfMaterialApp = (childrenOfRoot.first! as Map<String, Object?>)['children']! as List<Object?>;
       final Map<String, Object?> scaffold = childrenOfMaterialApp.first! as Map<String, Object?>;
       expect(scaffold['description'], 'Scaffold');
-      final String objectId = scaffold['objectId']! as String;
+      final String objectId = scaffold['valueId']! as String;
       final String details = service.getDetailsSubtree(objectId, 'foo2');
       // ignore: avoid_dynamic_calls
       final List<Object?> detailedChildren = json.decode(details)['children'] as List<Object?>;
@@ -4822,9 +5036,9 @@ class _TestWidgetInspectorService extends TestWidgetInspectorService {
             appBar: AppBar(
               title: const Text('Hello World!'),
             ),
-            body: Center(
+            body: const Center(
               child: Column(
-                children: const <Widget>[
+                children: <Widget>[
                   Text('Hello World!'),
                 ],
               ),

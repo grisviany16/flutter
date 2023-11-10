@@ -31,10 +31,8 @@ void main() {
     // that AssetBundle with fonts also works on Windows.
     testUsingContext('app font uses local font file', () async {
       final AssetBundle asset = AssetBundleFactory.instance.createBundle();
-      final String manifestPath =
-          globals.fs.path.join(dataPath, 'main', 'pubspec.yaml');
-      final String packagesPath =
-          globals.fs.path.join(dataPath, 'main', '.packages');
+      final String manifestPath = globals.fs.path.join(dataPath, 'main', 'pubspec.yaml');
+      final String packagesPath = globals.fs.path.join(dataPath, 'main', '.packages');
       await asset.build(
         manifestPath: manifestPath,
         packagesPath: packagesPath,
@@ -70,8 +68,7 @@ void main() {
       );
       final AssetBundle asset = AssetBundleFactory.instance.createBundle();
       await asset.build(
-        manifestPath: globals.fs.path
-            .join(dataPath, 'main', 'pubspec.yaml'), // file doesn't exist
+        manifestPath: globals.fs.path.join(dataPath, 'main', 'pubspec.yaml'), // file doesn't exist
         packagesPath: globals.fs.path.join(dataPath, 'main', '.packages'),
       );
       expect(asset.wasBuiltOnce(), true);
@@ -84,7 +81,7 @@ void main() {
     });
   });
 
-const String packageConfig = '''
+  const String packageConfig = '''
 {
   "configVersion": 2,
   "packages":[
@@ -98,15 +95,13 @@ const String packageConfig = '''
 }
 ''';
 
-const String pubspecDotYaml = '''
+  const String pubspecDotYaml = '''
 name: my_package
 ''';
 
   testUsingContext('Bundles material shaders on non-web platforms', () async {
-    final String shaderPath = globals.fs.path.join(
-      Cache.flutterRoot!,
-      'packages', 'flutter', 'lib', 'src', 'material', 'shaders', 'ink_sparkle.frag'
-    );
+    final String shaderPath = globals.fs.path
+        .join(Cache.flutterRoot!, 'packages', 'flutter', 'lib', 'src', 'material', 'shaders', 'ink_sparkle.frag');
     globals.fs.file(shaderPath).createSync(recursive: true);
     globals.fs.file('.dart_tool/package_config.json')
       ..createSync(recursive: true)
@@ -122,11 +117,9 @@ name: my_package
     ProcessManager: () => FakeProcessManager.empty(),
   });
 
-  testUsingContext('Does not bundles material shaders on web platforms', () async {
-    final String shaderPath = globals.fs.path.join(
-      Cache.flutterRoot!,
-      'packages', 'flutter', 'lib', 'src', 'material', 'shaders', 'ink_sparkle.frag'
-    );
+  testUsingContext('Does bundle material shaders on web platforms', () async {
+    final String shaderPath = globals.fs.path
+        .join(Cache.flutterRoot!, 'packages', 'flutter', 'lib', 'src', 'material', 'shaders', 'ink_sparkle.frag');
     globals.fs.file(shaderPath).createSync(recursive: true);
     globals.fs.file('.dart_tool/package_config.json')
       ..createSync(recursive: true)
@@ -136,7 +129,7 @@ name: my_package
 
     await asset.build(packagesPath: '.packages', targetPlatform: TargetPlatform.web_javascript);
 
-    expect(asset.entries.keys, isNot(contains('shaders/ink_sparkle.frag')));
+    expect(asset.entries.keys, contains('shaders/ink_sparkle.frag'));
   }, overrides: <Type, Generator>{
     FileSystem: () => MemoryFileSystem.test(),
     ProcessManager: () => FakeProcessManager.empty(),

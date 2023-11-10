@@ -16,8 +16,10 @@ import 'package:flutter_tools/src/ios/migrations/remove_framework_link_and_embed
 import 'package:flutter_tools/src/ios/migrations/xcode_build_system_migration.dart';
 import 'package:flutter_tools/src/ios/xcodeproj.dart';
 import 'package:flutter_tools/src/migrations/cocoapods_script_symlink.dart';
+import 'package:flutter_tools/src/migrations/cocoapods_toolchain_directory_migration.dart';
 import 'package:flutter_tools/src/migrations/xcode_project_object_version_migration.dart';
 import 'package:flutter_tools/src/migrations/xcode_script_build_phase_migration.dart';
+import 'package:flutter_tools/src/migrations/xcode_thin_binary_build_phase_input_paths_migration.dart';
 import 'package:flutter_tools/src/reporting/reporting.dart';
 import 'package:flutter_tools/src/xcode_project.dart';
 import 'package:test/fake.dart';
@@ -25,7 +27,7 @@ import 'package:test/fake.dart';
 import '../../src/common.dart';
 import '../../src/fake_process_manager.dart';
 
-void main () {
+void main() {
   group('iOS migration', () {
     late TestUsage testUsage;
 
@@ -54,17 +56,15 @@ void main () {
       });
 
       testWithoutContext('skipped if files are missing', () {
-        final RemoveFrameworkLinkAndEmbeddingMigration iosProjectMigration = RemoveFrameworkLinkAndEmbeddingMigration(
-          project,
-          testLogger,
-          testUsage
-        );
+        final RemoveFrameworkLinkAndEmbeddingMigration iosProjectMigration =
+            RemoveFrameworkLinkAndEmbeddingMigration(project, testLogger, testUsage);
         iosProjectMigration.migrate();
         expect(testUsage.events, isEmpty);
 
         expect(xcodeProjectInfoFile.existsSync(), isFalse);
 
-        expect(testLogger.traceText, contains('Xcode project not found, skipping framework link and embedding migration'));
+        expect(
+            testLogger.traceText, contains('Xcode project not found, skipping framework link and embedding migration'));
         expect(testLogger.statusText, isEmpty);
       });
 
@@ -148,9 +148,11 @@ keep this 2
         );
 
         expect(iosProjectMigration.migrate, throwsToolExit(message: 'Your Xcode project requires migration'));
-        expect(testUsage.events, contains(
-          const TestUsageEvent('ios-migration', 'remove-frameworks', label: 'failure'),
-        ));
+        expect(
+            testUsage.events,
+            contains(
+              const TestUsageEvent('ios-migration', 'remove-frameworks', label: 'failure'),
+            ));
       });
 
       testWithoutContext('migration fails with leftover Flutter.framework reference', () {
@@ -164,9 +166,11 @@ keep this 2
           testUsage,
         );
         expect(iosProjectMigration.migrate, throwsToolExit(message: 'Your Xcode project requires migration'));
-        expect(testUsage.events, contains(
-          const TestUsageEvent('ios-migration', 'remove-frameworks', label: 'failure'),
-        ));
+        expect(
+            testUsage.events,
+            contains(
+              const TestUsageEvent('ios-migration', 'remove-frameworks', label: 'failure'),
+            ));
       });
 
       testWithoutContext('migration fails without Xcode installed', () {
@@ -180,9 +184,11 @@ keep this 2
           testUsage,
         );
         expect(iosProjectMigration.migrate, throwsToolExit(message: 'Your Xcode project requires migration'));
-        expect(testUsage.events, contains(
-          const TestUsageEvent('ios-migration', 'remove-frameworks', label: 'failure'),
-        ));
+        expect(
+            testUsage.events,
+            contains(
+              const TestUsageEvent('ios-migration', 'remove-frameworks', label: 'failure'),
+            ));
       });
     });
 
@@ -294,7 +300,8 @@ keep this 2
         iosProjectMigration.migrate();
         expect(xcodeProjectWorkspaceData.existsSync(), isFalse);
 
-        expect(testLogger.traceText, contains('Xcode project workspace data not found, skipping build location migration.'));
+        expect(testLogger.traceText,
+            contains('Xcode project workspace data not found, skipping build location migration.'));
         expect(testLogger.statusText, isEmpty);
       });
 
@@ -373,7 +380,8 @@ keep this 2
         iosProjectMigration.migrate();
         expect(xcodeProjectInfoFile.existsSync(), isFalse);
 
-        expect(testLogger.traceText, contains('Xcode project not found, skipping Runner project build settings and configuration migration'));
+        expect(testLogger.traceText,
+            contains('Xcode project not found, skipping Runner project build settings and configuration migration'));
         expect(testLogger.statusText, isEmpty);
       });
 
@@ -537,8 +545,10 @@ keep this 3
         expect(appFrameworkInfoPlist.existsSync(), isFalse);
         expect(podfile.existsSync(), isFalse);
 
-        expect(testLogger.traceText, contains('Xcode project not found, skipping iOS deployment target version migration'));
-        expect(testLogger.traceText, contains('AppFrameworkInfo.plist not found, skipping minimum OS version migration'));
+        expect(testLogger.traceText,
+            contains('Xcode project not found, skipping iOS deployment target version migration'));
+        expect(
+            testLogger.traceText, contains('AppFrameworkInfo.plist not found, skipping minimum OS version migration'));
         expect(testLogger.traceText, contains('Podfile not found, skipping global platform iOS version migration'));
         expect(testLogger.statusText, isEmpty);
       });
@@ -684,13 +694,13 @@ platform :ios, '11.0'
 	objectVersion = 54;
 	objects = {
 			attributes = {
-				LastUpgradeCheck = 1300;
+				LastUpgradeCheck = 1430;
 				ORGANIZATIONNAME = "";
       ''';
         xcodeProjectInfoFile.writeAsStringSync(xcodeProjectInfoFileContents);
 
         const String xcodeProjectSchemeFileContents = '''
-   LastUpgradeVersion = "1300"
+   LastUpgradeVersion = "1430"
 ''';
         xcodeProjectSchemeFile.writeAsStringSync(xcodeProjectSchemeFileContents);
 
@@ -738,13 +748,13 @@ platform :ios, '11.0'
 	objectVersion = 54;
 	objects = {
 			attributes = {
-				LastUpgradeCheck = 1300;
+				LastUpgradeCheck = 1430;
 				ORGANIZATIONNAME = "";
 ''');
 
         expect(xcodeProjectSchemeFile.readAsStringSync(), '''
 <Scheme
-   LastUpgradeVersion = "1300"
+   LastUpgradeVersion = "1430"
    version = "1.3">
 ''');
         // Only print once even though 3 lines were changed.
@@ -919,7 +929,8 @@ platform :ios, '11.0'
         testLogger = BufferLogger.test();
         project = FakeIosProject();
         processManager = FakeProcessManager.any();
-        xcode143ProjectInterpreter = XcodeProjectInterpreter.test(processManager: processManager, version: Version(14, 3, 0));
+        xcode143ProjectInterpreter =
+            XcodeProjectInterpreter.test(processManager: processManager, version: Version(14, 3, 0));
         project.podRunnerFrameworksScript = podRunnerFrameworksScript;
       });
 
@@ -975,7 +986,8 @@ platform :ios, '11.0'
         );
         iosProjectMigration.migrate();
         expect(podRunnerFrameworksScript.existsSync(), isTrue);
-        expect(testLogger.traceText, contains('Detected Xcode version is 14.2.0, below 14.3, skipping "readlink -f" workaround'));
+        expect(testLogger.traceText,
+            contains('Detected Xcode version is 14.2.0, below 14.3, skipping "readlink -f" workaround'));
         expect(testLogger.statusText, isEmpty);
       });
 
@@ -1002,6 +1014,151 @@ platform :ios, '11.0'
         expect(testLogger.statusText, contains('Upgrading Pods-Runner-frameworks.sh'));
       });
     });
+
+    group('Cocoapods migrate toolchain directory', () {
+      late MemoryFileSystem memoryFileSystem;
+      late BufferLogger testLogger;
+      late FakeIosProject project;
+      late Directory podRunnerTargetSupportFiles;
+      late ProcessManager processManager;
+      late XcodeProjectInterpreter xcode15ProjectInterpreter;
+
+      setUp(() {
+        memoryFileSystem = MemoryFileSystem();
+        podRunnerTargetSupportFiles = memoryFileSystem.directory('Pods-Runner');
+        testLogger = BufferLogger.test();
+        project = FakeIosProject();
+        processManager = FakeProcessManager.any();
+        xcode15ProjectInterpreter =
+            XcodeProjectInterpreter.test(processManager: processManager, version: Version(15, 0, 0));
+        project.podRunnerTargetSupportFiles = podRunnerTargetSupportFiles;
+      });
+
+      testWithoutContext('skip if directory is missing', () {
+        final CocoaPodsToolchainDirectoryMigration iosProjectMigration = CocoaPodsToolchainDirectoryMigration(
+          project,
+          xcode15ProjectInterpreter,
+          testLogger,
+        );
+        iosProjectMigration.migrate();
+        expect(podRunnerTargetSupportFiles.existsSync(), isFalse);
+
+        expect(testLogger.traceText, contains('CocoaPods Pods-Runner Target Support Files not found'));
+        expect(testLogger.statusText, isEmpty);
+      });
+
+      testWithoutContext('skip if xcconfig files are missing', () {
+        podRunnerTargetSupportFiles.createSync();
+        final CocoaPodsToolchainDirectoryMigration iosProjectMigration = CocoaPodsToolchainDirectoryMigration(
+          project,
+          xcode15ProjectInterpreter,
+          testLogger,
+        );
+        iosProjectMigration.migrate();
+        expect(podRunnerTargetSupportFiles.existsSync(), isTrue);
+        expect(testLogger.traceText, isEmpty);
+        expect(testLogger.statusText, isEmpty);
+      });
+
+      testWithoutContext('skip if nothing to upgrade', () {
+        podRunnerTargetSupportFiles.createSync();
+        final File debugConfig = podRunnerTargetSupportFiles.childFile('Pods-Runner.debug.xcconfig');
+        const String contents = r'''
+LD_RUNPATH_SEARCH_PATHS = $(inherited) /usr/lib/swift '@executable_path/../Frameworks' '@loader_path/Frameworks' "${TOOLCHAIN_DIR}/usr/lib/swift/${PLATFORM_NAME}"
+LIBRARY_SEARCH_PATHS = $(inherited) "${TOOLCHAIN_DIR}/usr/lib/swift/${PLATFORM_NAME}" /usr/lib/swift
+''';
+        debugConfig.writeAsStringSync(contents);
+
+        final File profileConfig = podRunnerTargetSupportFiles.childFile('Pods-Runner.profile.xcconfig');
+        profileConfig.writeAsStringSync(contents);
+
+        final File releaseConfig = podRunnerTargetSupportFiles.childFile('Pods-Runner.release.xcconfig');
+        releaseConfig.writeAsStringSync(contents);
+
+        final CocoaPodsToolchainDirectoryMigration iosProjectMigration = CocoaPodsToolchainDirectoryMigration(
+          project,
+          xcode15ProjectInterpreter,
+          testLogger,
+        );
+        iosProjectMigration.migrate();
+        expect(debugConfig.existsSync(), isTrue);
+        expect(testLogger.traceText, isEmpty);
+        expect(testLogger.statusText, isEmpty);
+      });
+
+      testWithoutContext('skipped if Xcode version below 15', () {
+        podRunnerTargetSupportFiles.createSync();
+        final File debugConfig = podRunnerTargetSupportFiles.childFile('Pods-Runner.debug.xcconfig');
+        const String contents = r'''
+LD_RUNPATH_SEARCH_PATHS = $(inherited) /usr/lib/swift '@executable_path/../Frameworks' '@loader_path/Frameworks' "${DT_TOOLCHAIN_DIR}/usr/lib/swift/${PLATFORM_NAME}"
+LIBRARY_SEARCH_PATHS = $(inherited) "${DT_TOOLCHAIN_DIR}/usr/lib/swift/${PLATFORM_NAME}" /usr/lib/swift
+''';
+        debugConfig.writeAsStringSync(contents);
+
+        final File profileConfig = podRunnerTargetSupportFiles.childFile('Pods-Runner.profile.xcconfig');
+        profileConfig.writeAsStringSync(contents);
+
+        final File releaseConfig = podRunnerTargetSupportFiles.childFile('Pods-Runner.release.xcconfig');
+        releaseConfig.writeAsStringSync(contents);
+
+        final XcodeProjectInterpreter xcode14ProjectInterpreter = XcodeProjectInterpreter.test(
+          processManager: processManager,
+          version: Version(14, 0, 0),
+        );
+
+        final CocoaPodsToolchainDirectoryMigration iosProjectMigration = CocoaPodsToolchainDirectoryMigration(
+          project,
+          xcode14ProjectInterpreter,
+          testLogger,
+        );
+        iosProjectMigration.migrate();
+        expect(debugConfig.existsSync(), isTrue);
+        expect(testLogger.traceText, contains('Detected Xcode version is 14.0.0, below 15.0'));
+        expect(testLogger.statusText, isEmpty);
+      });
+
+      testWithoutContext('Xcode project is migrated and ignores leading whitespace', () {
+        podRunnerTargetSupportFiles.createSync();
+        final File debugConfig = podRunnerTargetSupportFiles.childFile('Pods-Runner.debug.xcconfig');
+        const String contents = r'''
+LD_RUNPATH_SEARCH_PATHS = $(inherited) /usr/lib/swift '@executable_path/../Frameworks' '@loader_path/Frameworks' "${DT_TOOLCHAIN_DIR}/usr/lib/swift/${PLATFORM_NAME}"
+  LIBRARY_SEARCH_PATHS = $(inherited) "${DT_TOOLCHAIN_DIR}/usr/lib/swift/${PLATFORM_NAME}" /usr/lib/swift
+''';
+        debugConfig.writeAsStringSync(contents);
+
+        final File profileConfig = podRunnerTargetSupportFiles.childFile('Pods-Runner.profile.xcconfig');
+        profileConfig.writeAsStringSync(contents);
+
+        final File releaseConfig = podRunnerTargetSupportFiles.childFile('Pods-Runner.release.xcconfig');
+        releaseConfig.writeAsStringSync(contents);
+
+        final CocoaPodsToolchainDirectoryMigration iosProjectMigration = CocoaPodsToolchainDirectoryMigration(
+          project,
+          xcode15ProjectInterpreter,
+          testLogger,
+        );
+        iosProjectMigration.migrate();
+
+        expect(debugConfig.existsSync(), isTrue);
+        expect(debugConfig.readAsStringSync(), r'''
+LD_RUNPATH_SEARCH_PATHS = $(inherited) /usr/lib/swift '@executable_path/../Frameworks' '@loader_path/Frameworks' "${TOOLCHAIN_DIR}/usr/lib/swift/${PLATFORM_NAME}"
+  LIBRARY_SEARCH_PATHS = $(inherited) "${TOOLCHAIN_DIR}/usr/lib/swift/${PLATFORM_NAME}" /usr/lib/swift
+''');
+        expect(profileConfig.existsSync(), isTrue);
+        expect(profileConfig.readAsStringSync(), r'''
+LD_RUNPATH_SEARCH_PATHS = $(inherited) /usr/lib/swift '@executable_path/../Frameworks' '@loader_path/Frameworks' "${TOOLCHAIN_DIR}/usr/lib/swift/${PLATFORM_NAME}"
+  LIBRARY_SEARCH_PATHS = $(inherited) "${TOOLCHAIN_DIR}/usr/lib/swift/${PLATFORM_NAME}" /usr/lib/swift
+''');
+        expect(releaseConfig.existsSync(), isTrue);
+        expect(releaseConfig.readAsStringSync(), r'''
+LD_RUNPATH_SEARCH_PATHS = $(inherited) /usr/lib/swift '@executable_path/../Frameworks' '@loader_path/Frameworks' "${TOOLCHAIN_DIR}/usr/lib/swift/${PLATFORM_NAME}"
+  LIBRARY_SEARCH_PATHS = $(inherited) "${TOOLCHAIN_DIR}/usr/lib/swift/${PLATFORM_NAME}" /usr/lib/swift
+''');
+        expect(testLogger.statusText, contains('Upgrading Pods-Runner.debug.xcconfig'));
+        expect(testLogger.statusText, contains('Upgrading Pods-Runner.profile.xcconfig'));
+        expect(testLogger.statusText, contains('Upgrading Pods-Runner.release.xcconfig'));
+      });
+    });
   });
 
   group('update Xcode script build phase', () {
@@ -1026,7 +1183,8 @@ platform :ios, '11.0'
       iosProjectMigration.migrate();
       expect(xcodeProjectInfoFile.existsSync(), isFalse);
 
-      expect(testLogger.traceText, contains('Xcode project not found, skipping script build phase dependency analysis removal'));
+      expect(testLogger.traceText,
+          contains('Xcode project not found, skipping script build phase dependency analysis removal'));
       expect(testLogger.statusText, isEmpty);
     });
 
@@ -1104,6 +1262,118 @@ platform :ios, '11.0'
       expect(testLogger.statusText, contains('Removing script build phase dependency analysis'));
     });
   });
+
+  group('update Xcode Thin Binary build phase to have input path', () {
+    late MemoryFileSystem memoryFileSystem;
+    late BufferLogger testLogger;
+    late FakeIosProject project;
+    late File xcodeProjectInfoFile;
+
+    setUp(() {
+      memoryFileSystem = MemoryFileSystem();
+      testLogger = BufferLogger.test();
+      project = FakeIosProject();
+      xcodeProjectInfoFile = memoryFileSystem.file('project.pbxproj');
+      project.xcodeProjectInfoFile = xcodeProjectInfoFile;
+    });
+
+    testWithoutContext('skipped if files are missing', () {
+      final XcodeThinBinaryBuildPhaseInputPathsMigration iosProjectMigration =
+          XcodeThinBinaryBuildPhaseInputPathsMigration(
+        project,
+        testLogger,
+      );
+      iosProjectMigration.migrate();
+      expect(xcodeProjectInfoFile.existsSync(), isFalse);
+
+      expect(testLogger.traceText,
+          contains('Xcode project not found, skipping script build phase dependency analysis removal'));
+      expect(testLogger.statusText, isEmpty);
+    });
+
+    testWithoutContext('skipped if nothing to upgrade', () {
+      const String xcodeProjectInfoFileContents = r'''
+/* Begin PBXShellScriptBuildPhase section */
+		3B06AD1E1E4923F5004D2608 /* Thin Binary */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+				"${TARGET_BUILD_DIR}/${INFOPLIST_PATH}",
+			);
+      ''';
+      xcodeProjectInfoFile.writeAsStringSync(xcodeProjectInfoFileContents);
+
+      final DateTime projectLastModified = xcodeProjectInfoFile.lastModifiedSync();
+
+      final XcodeThinBinaryBuildPhaseInputPathsMigration iosProjectMigration =
+          XcodeThinBinaryBuildPhaseInputPathsMigration(
+        project,
+        testLogger,
+      );
+      iosProjectMigration.migrate();
+
+      expect(xcodeProjectInfoFile.lastModifiedSync(), projectLastModified);
+      expect(xcodeProjectInfoFile.readAsStringSync(), xcodeProjectInfoFileContents);
+
+      expect(testLogger.statusText, isEmpty);
+    });
+
+    testWithoutContext('Thin Binary inputPaths is migrated', () {
+      xcodeProjectInfoFile.writeAsStringSync(r'''
+/* Begin PBXShellScriptBuildPhase section */
+		3B06AD1E1E4923F5004D2608 /* Thin Binary */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+
+		9740EEB61CF901F6004384FC /* Run Script */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+''');
+
+      final XcodeThinBinaryBuildPhaseInputPathsMigration iosProjectMigration =
+          XcodeThinBinaryBuildPhaseInputPathsMigration(
+        project,
+        testLogger,
+      );
+      iosProjectMigration.migrate();
+
+      expect(xcodeProjectInfoFile.readAsStringSync(), r'''
+/* Begin PBXShellScriptBuildPhase section */
+		3B06AD1E1E4923F5004D2608 /* Thin Binary */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+				"${TARGET_BUILD_DIR}/${INFOPLIST_PATH}",
+			);
+
+		9740EEB61CF901F6004384FC /* Run Script */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+''');
+      expect(testLogger.statusText, contains('Adding input path to Thin Binary build phase.'));
+    });
+  });
 }
 
 class FakeIosProject extends Fake implements IosProject {
@@ -1130,11 +1400,13 @@ class FakeIosProject extends Fake implements IosProject {
 
   @override
   File podRunnerFrameworksScript = MemoryFileSystem.test().file('podRunnerFrameworksScript');
+
+  @override
+  Directory podRunnerTargetSupportFiles = MemoryFileSystem.test().directory('Pods-Runner');
 }
 
 class FakeIOSMigrator extends ProjectMigrator {
-  FakeIOSMigrator()
-    : super(BufferLogger.test());
+  FakeIOSMigrator() : super(BufferLogger.test());
 
   @override
   void migrate() {}
